@@ -21,7 +21,7 @@ namespace VencordInstaller
 
         public override string ToString()
         {
-            string status = IsPatched ? " [iMACord Installed]" : "";
+            string status = IsPatched ? " [iMCord Installed]" : "";
             return string.Format("{0} - {1}{2}", Name, BasePath, status);
         }
     }
@@ -41,7 +41,8 @@ namespace VencordInstaller
             "patcher.js",
             "preload.js",
             "renderer.js",
-            "renderer.css"
+            "renderer.css",
+            "iMCord.ico"
         };
 
         public static readonly string[] EmbeddedPluginFiles = new string[]

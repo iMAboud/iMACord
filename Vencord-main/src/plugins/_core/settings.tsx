@@ -170,8 +170,8 @@ export default definePlugin({
         const vencordEntries: SettingsLayoutNode[] = [
             buildEntry({
                 key: "vencord_main",
-                title: "iMACord",
-                panelTitle: "iMACord Settings",
+                title: "iMCord",
+                panelTitle: "iMCord Settings",
                 Component: VencordTab,
                 Icon: MainSettingsIcon
             }),
@@ -190,14 +190,14 @@ export default definePlugin({
             !IS_UPDATER_DISABLED && buildEntry({
                 key: "vencord_updater",
                 title: "Updater",
-                panelTitle: "iMACord Updater",
+                panelTitle: "iMCord Updater",
                 Component: UpdaterTab ?? (() => null),
                 Icon: UpdaterIcon
             }),
             buildEntry({
                 key: "vencord_cloud",
                 title: "Cloud",
-                panelTitle: "iMACord Cloud",
+                panelTitle: "iMCord Cloud",
                 Component: CloudTab,
                 Icon: CloudIcon
             }),
@@ -231,7 +231,7 @@ export default definePlugin({
         const vencordSection: SettingsLayoutNode = {
             key: "vencord_section",
             type: LayoutTypes.SECTION,
-            useTitle: () => "iMACord Settings",
+            useTitle: () => "iMCord Settings",
             buildLayout: () => vencordEntries
         };
 

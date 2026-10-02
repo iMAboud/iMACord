@@ -259,7 +259,7 @@ export function buildUpdaterMenuEntries() {
                     showToast("New update available!");
                 } else {
                     setStatus("up_to_date");
-                    showToast("iMACord is up to date!");
+                    showToast("iMCord is up to date!");
                     setTimeout(() => setStatus("idle"), 3000);
                 }
             } catch (err: unknown) {

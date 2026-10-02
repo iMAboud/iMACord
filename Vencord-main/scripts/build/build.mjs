@@ -19,7 +19,7 @@
 
 // @ts-check
 
-import { readdir } from "fs/promises";
+import { copyFile, readdir } from "fs/promises";
 import { join, resolve } from "path";
 
 import { BUILD_TIMESTAMP, commonOpts, exists, globPlugins, IS_DEV, IS_REPORTER, IS_ANTI_CRASH_TEST, IS_STANDALONE, IS_UPDATER_DISABLED, resolvePluginName, VERSION, commonRendererPlugins, watch, buildOrWatchAll, stringifyValues } from "./common.mjs";
@@ -218,3 +218,10 @@ const buildConfigs = ([
 ]);
 
 await buildOrWatchAll(buildConfigs);
+
+try {
+    const icoPath = exists("iMCord.ico") ? "iMCord.ico" : exists("../iMCord.ico") ? "../iMCord.ico" : null;
+    if (icoPath) {
+        await copyFile(icoPath, "dist/iMCord.ico");
+    }
+} catch {}

@@ -53,15 +53,22 @@ if not exist "userplugins\DiscordDebloater.js" (
 
 :: 4. Verify Icon
 set "ICON_PARAM="
-if exist "vencord.ico" (
-    set "ICON_PARAM=/win32icon:vencord.ico /resource:vencord.ico,vencord.ico"
+set "ICO_RES="
+if exist "iMCord.ico" (
+    set "ICON_PARAM=/win32icon:iMCord.ico"
+    set "ICO_RES=/resource:iMCord.ico,iMCord.ico"
+) else if exist "installer_src\iMCord.ico" (
+    set "ICON_PARAM=/win32icon:installer_src\iMCord.ico"
+    set "ICO_RES=/resource:installer_src\iMCord.ico,iMCord.ico"
+) else if exist "vencord.ico" (
+    set "ICON_PARAM=/win32icon:vencord.ico"
 )
 
 echo.
-echo [1/2] Building VencordInstallerCli.exe (Console)...
+echo [1/2] Building iMCordCLI.exe (Console)...
 "%CSC%" /nologo /target:exe /optimize+ /platform:anycpu ^
     /reference:System.dll /reference:System.Core.dll ^
-    %ICON_PARAM% ^
+    %ICON_PARAM% %ICO_RES% ^
     /resource:Vencord-main\dist\patcher.js,patcher.js ^
     /resource:Vencord-main\dist\preload.js,preload.js ^
     /resource:Vencord-main\dist\renderer.js,renderer.js ^
@@ -70,17 +77,17 @@ echo [1/2] Building VencordInstallerCli.exe (Console)...
     /resource:userplugins\MultiStreamPopout.js,MultiStreamPopout.js ^
     /resource:userplugins\amongick.js,amongick.js ^
     /resource:userplugins\DiscordDebloater.js,DiscordDebloater.js ^
-    /out:VencordInstallerCli.exe ^
+    /out:iMCordCLI.exe ^
     installer_src\InstallerCore.cs installer_src\ProgramCli.cs
 
 if %ERRORLEVEL% neq 0 (
-    echo [ERROR] Failed to compile VencordInstallerCli.exe
+    echo [ERROR] Failed to compile iMCordCLI.exe
     exit /b %ERRORLEVEL%
 )
-echo [OK] VencordInstallerCli.exe compiled successfully!
+echo [OK] iMCordCLI.exe compiled successfully!
 
 echo.
-echo [2/2] Building VencordInstaller.exe (WPF GUI)...
+echo [2/2] Building iMCord.exe (WPF GUI)...
 "%CSC%" /nologo /target:winexe /optimize+ /platform:anycpu ^
     /reference:"%WPF_DIR%\PresentationCore.dll" ^
     /reference:"%WPF_DIR%\PresentationFramework.dll" ^
@@ -90,7 +97,7 @@ echo [2/2] Building VencordInstaller.exe (WPF GUI)...
     /reference:System.Core.dll ^
     /reference:System.Drawing.dll ^
     /reference:System.Windows.Forms.dll ^
-    %ICON_PARAM% ^
+    %ICON_PARAM% %ICO_RES% ^
     /resource:Vencord-main\dist\patcher.js,patcher.js ^
     /resource:Vencord-main\dist\preload.js,preload.js ^
     /resource:Vencord-main\dist\renderer.js,renderer.js ^
@@ -99,23 +106,23 @@ echo [2/2] Building VencordInstaller.exe (WPF GUI)...
     /resource:userplugins\MultiStreamPopout.js,MultiStreamPopout.js ^
     /resource:userplugins\amongick.js,amongick.js ^
     /resource:userplugins\DiscordDebloater.js,DiscordDebloater.js ^
-    /out:VencordInstaller.exe ^
+    /out:iMCord.exe ^
     installer_src\InstallerCore.cs installer_src\ProgramGui.cs
 
 if %ERRORLEVEL% neq 0 (
-    echo [ERROR] Failed to compile VencordInstaller.exe
+    echo [ERROR] Failed to compile iMCord.exe
     exit /b %ERRORLEVEL%
 )
-echo [OK] VencordInstaller.exe compiled successfully!
+echo [OK] iMCord.exe compiled successfully!
 
 :: Mirror to Vencord-main\dist\Installer
 if not exist "Vencord-main\dist\Installer" mkdir "Vencord-main\dist\Installer"
-copy /y "VencordInstallerCli.exe" "Vencord-main\dist\Installer\VencordInstallerCli.exe" >nul
-copy /y "VencordInstaller.exe" "Vencord-main\dist\Installer\VencordInstaller.exe" >nul
+copy /y "iMCordCLI.exe" "Vencord-main\dist\Installer\iMCordCLI.exe" >nul
+copy /y "iMCord.exe" "Vencord-main\dist\Installer\iMCord.exe" >nul
 
 echo.
 echo ===================================================
 echo [SUCCESS] Standalone Installers Built:
-echo   - %ROOT_DIR%\VencordInstaller.exe (GUI)
-echo   - %ROOT_DIR%\VencordInstallerCli.exe (CLI)
+echo   - %ROOT_DIR%\iMCord.exe (GUI)
+echo   - %ROOT_DIR%\iMCordCLI.exe (CLI)
 echo ===================================================

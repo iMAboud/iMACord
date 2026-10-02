@@ -68,7 +68,7 @@ function VencordPopoutButton() {
                     ref={buttonRef}
                     className="vc-toolbox-btn"
                     onClick={() => setShow(v => !v)}
-                    tooltip={isShown ? null : "iMACord Toolbox"}
+                    tooltip={isShown ? null : "iMCord Toolbox"}
                     icon={() => <Icon isShown={isShown} />}
                     selected={isShown}
                 />
@@ -79,7 +79,7 @@ function VencordPopoutButton() {
 
 export default definePlugin({
     name: "VencordToolbox",
-    description: "Adds a button to the titlebar that houses iMACord quick actions",
+    description: "Adds a button to the titlebar that houses iMCord quick actions",
     tags: ["Utility", "Developers"],
     authors: [Devs.Ven, Devs.AutumnVN],
 

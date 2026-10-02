@@ -168,7 +168,7 @@ async function fetchUpdates(): Promise<boolean> {
                 HasCoreUpdate = true;
                 CachedChanges.push({
                     hash: remoteHash.slice(0, 7),
-                    author: "iMACord",
+                    author: "iMCord",
                     message: `[Vencord Core] Updated ${filename}`
                 });
             }
@@ -239,14 +239,14 @@ async function fetchUpdates(): Promise<boolean> {
                         HasCoreUpdate = true;
                         CachedChanges.push({
                             hash: release.tag_name ?? "latest",
-                            author: "iMACord",
+                            author: "iMCord",
                             message: `[Vencord Core] Updated ${asset.name}`
                         });
                     }
                 }
             }
         } catch (e) {
-            console.warn("[iMACord Updater] Fallback release check failed:", e);
+            console.warn("[iMCord Updater] Fallback release check failed:", e);
         }
 
         try {
@@ -286,7 +286,7 @@ async function fetchUpdates(): Promise<boolean> {
                 }
             }
         } catch (e) {
-            console.warn("[iMACord Updater] Fallback userplugins check failed:", e);
+            console.warn("[iMCord Updater] Fallback userplugins check failed:", e);
         }
     }
 

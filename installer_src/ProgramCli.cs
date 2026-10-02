@@ -43,7 +43,7 @@ namespace VencordInstaller
 
             if (flagVersion)
             {
-                Console.WriteLine("iMACord Installer CLI (Custom Build)");
+                Console.WriteLine("iMCord Installer CLI (Custom Build)");
                 Console.WriteLine("Features: Custom User Plugins & In-App Plugin Manager");
                 return 0;
             }
@@ -91,21 +91,21 @@ namespace VencordInstaller
                 if (flagInstall || flagRepair)
                 {
                     Console.ForegroundColor = ConsoleColor.Cyan;
-                    Console.WriteLine("Installing iMACord to: " + target.BasePath);
+                    Console.WriteLine("Installing iMCord to: " + target.BasePath);
                     Console.ResetColor();
                     InstallerCore.Install(target, log);
                     Console.ForegroundColor = ConsoleColor.Green;
-                    Console.WriteLine("Successfully installed iMACord!");
+                    Console.WriteLine("Successfully installed iMCord!");
                     Console.ResetColor();
                 }
                 else if (flagUninstall)
                 {
                     Console.ForegroundColor = ConsoleColor.Cyan;
-                    Console.WriteLine("Uninstalling iMACord from: " + target.BasePath);
+                    Console.WriteLine("Uninstalling iMCord from: " + target.BasePath);
                     Console.ResetColor();
                     InstallerCore.Uninstall(target, log);
                     Console.ForegroundColor = ConsoleColor.Green;
-                    Console.WriteLine("Successfully uninstalled iMACord!");
+                    Console.WriteLine("Successfully uninstalled iMCord!");
                     Console.ResetColor();
                 }
                 else if (flagInstallOpenAsar)
@@ -143,7 +143,7 @@ namespace VencordInstaller
         {
             Console.ForegroundColor = ConsoleColor.Cyan;
             Console.WriteLine("==================================================");
-            Console.WriteLine("              VENCORD INSTALLER (CLI)");
+            Console.WriteLine("              iMCord INSTALLER (CLI)");
             Console.WriteLine("    Custom Build: iMAMenu");
             Console.WriteLine("    + Custom Plugin Manager & Filters");
             Console.WriteLine("==================================================");
@@ -175,7 +175,7 @@ namespace VencordInstaller
             {
                 DiscordInstall d = discords[i];
                 Console.ForegroundColor = d.IsPatched ? ConsoleColor.Green : ConsoleColor.White;
-                Console.WriteLine(string.Format("  [{0}] {1} ({2}){3}", i + 1, d.Name, d.BasePath, d.IsPatched ? " [Vencord Installed]" : ""));
+                Console.WriteLine(string.Format("  [{0}] {1} ({2}){3}", i + 1, d.Name, d.BasePath, d.IsPatched ? " [iMCord Installed]" : ""));
             }
             Console.WriteLine(string.Format("  [{0}] Custom Location", discords.Count + 1));
             Console.ResetColor();
@@ -211,9 +211,9 @@ namespace VencordInstaller
 
             Console.WriteLine();
             Console.WriteLine("What would you like to do?");
-            Console.WriteLine("  [1] Install iMACord");
-            Console.WriteLine("  [2] Reinstall / Repair iMACord");
-            Console.WriteLine("  [3] Uninstall iMACord");
+            Console.WriteLine("  [1] Install iMCord");
+            Console.WriteLine("  [2] Reinstall / Repair iMCord");
+            Console.WriteLine("  [3] Uninstall iMCord");
             Console.WriteLine("  [4] Install OpenAsar");
             Console.WriteLine("  [5] Uninstall OpenAsar");
             Console.WriteLine("  [6] Quit");
@@ -247,21 +247,21 @@ namespace VencordInstaller
                     case 1:
                     case 2:
                         Console.ForegroundColor = ConsoleColor.Cyan;
-                        Console.WriteLine("Installing custom iMACord to: " + selectedDiscord.BasePath);
+                        Console.WriteLine("Installing custom iMCord to: " + selectedDiscord.BasePath);
                         Console.ResetColor();
                         InstallerCore.Install(selectedDiscord, log);
                         Console.ForegroundColor = ConsoleColor.Green;
-                        Console.WriteLine("\n[SUCCESS] iMACord installed successfully!");
+                        Console.WriteLine("\n[SUCCESS] iMCord installed successfully!");
                         Console.WriteLine("Restart Discord to use your custom plugins.");
                         Console.ResetColor();
                         break;
                     case 3:
                         Console.ForegroundColor = ConsoleColor.Cyan;
-                        Console.WriteLine("Uninstalling iMACord from: " + selectedDiscord.BasePath);
+                        Console.WriteLine("Uninstalling iMCord from: " + selectedDiscord.BasePath);
                         Console.ResetColor();
                         InstallerCore.Uninstall(selectedDiscord, log);
                         Console.ForegroundColor = ConsoleColor.Green;
-                        Console.WriteLine("\n[SUCCESS] iMACord uninstalled successfully!");
+                        Console.WriteLine("\n[SUCCESS] iMCord uninstalled successfully!");
                         Console.ResetColor();
                         break;
                     case 4:
@@ -325,12 +325,12 @@ namespace VencordInstaller
 
         private static void PrintHelp()
         {
-            Console.WriteLine("Usage: VencordInstallerCli.exe [options]");
+            Console.WriteLine("Usage: iMCordCLI.exe [options]");
             Console.WriteLine();
             Console.WriteLine("Options:");
-            Console.WriteLine("  -install               Install iMACord");
-            Console.WriteLine("  -repair                Repair / Reinstall iMACord");
-            Console.WriteLine("  -uninstall             Uninstall iMACord");
+            Console.WriteLine("  -install               Install iMCord");
+            Console.WriteLine("  -repair                Repair / Reinstall iMCord");
+            Console.WriteLine("  -uninstall             Uninstall iMCord");
             Console.WriteLine("  -install-openasar      Install OpenAsar");
             Console.WriteLine("  -uninstall-openasar    Uninstall OpenAsar");
             Console.WriteLine("  -branch <branch>       The branch of Discord [auto|stable|ptb|canary|dev]");

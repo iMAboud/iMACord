@@ -127,7 +127,7 @@ async function runUpdateCheck() {
             await update();
             if (Settings.autoUpdateNotification) {
                 notify({
-                    title: "iMACord has been updated!",
+                    title: "iMCord has been updated!",
                     body: "Click here to restart",
                     onClick: relaunch
                 });
@@ -136,7 +136,7 @@ async function runUpdateCheck() {
         }
 
         notify({
-            title: "An iMACord update is available!",
+            title: "An iMCord update is available!",
             body: "Click here to view the update",
             onClick: () => openSettingsTabModal(UpdaterTab!)
         });

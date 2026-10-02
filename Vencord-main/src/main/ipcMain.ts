@@ -62,7 +62,7 @@ try {
         writeFileSync(QUICK_CSS_PATH, updatedCss, "utf-8");
     }
 } catch (e) {
-    console.error("[iMACord] Failed to initialize QuickCSS separator rule", e);
+    console.error("[iMCord] Failed to initialize QuickCSS separator rule", e);
 }
 
 async function readCss() {
@@ -220,7 +220,7 @@ ipcMain.on(IpcEvents.GET_MONACO_THEME, e => {
 });
 
 ipcMain.handle(IpcEvents.OPEN_MONACO_EDITOR, async () => {
-    const title = "iMACord QuickCSS Editor";
+    const title = "iMCord QuickCSS Editor";
     const existingWindow = BrowserWindow.getAllWindows().find(w => w.title === title);
     if (existingWindow && !existingWindow.isDestroyed()) {
         existingWindow.focus();

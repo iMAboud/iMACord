@@ -44,8 +44,8 @@ function VesktopSection() {
     return (
         <Flex className={Margins.bottom20} flexDirection="column" gap="1em">
             <Card variant="info">
-                <HeadingSecondary>Vesktop & iMACord</HeadingSecondary>
-                <Paragraph>Vesktop and iMACord are two separate things. This updater is for iMACord.</Paragraph>
+                <HeadingSecondary>Vesktop & iMCord</HeadingSecondary>
+                <Paragraph>Vesktop and iMCord are two separate things. This updater is for iMCord.</Paragraph>
                 <Paragraph className={Margins.top8}>
                     You receive separate popups for Vesktop updates. You can also manually update by installing the <Link href="https://vesktop.dev/install">latest version</Link>.
                 </Paragraph>
@@ -84,14 +84,14 @@ function Updater() {
             <div className="vc-settings-switches">
                 <FormSwitch
                     title="Automatically update"
-                    description="Automatically update iMACord without confirmation prompt"
+                    description="Automatically update iMCord without confirmation prompt"
                     value={settings.autoUpdate}
                     onChange={(v: boolean) => settings.autoUpdate = v}
                     hideBorder
                 />
                 <FormSwitch
                     title="Get notified when an automatic update completes"
-                    description="Show a notification when iMACord automatically updates"
+                    description="Show a notification when iMCord automatically updates"
                     value={settings.autoUpdateNotification}
                     onChange={(v: boolean) => settings.autoUpdateNotification = v}
                     disabled={!settings.autoUpdate}

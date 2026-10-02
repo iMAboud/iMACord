@@ -1,4 +1,4 @@
-name: Build and Release iMACord
+name: Build and Release iMCord
 
 on:
   push:
@@ -52,11 +52,11 @@ jobs:
         run: |
           if [[ "${{ github.ref_type }}" == "tag" ]]; then
             echo "TAG_NAME=${{ github.ref_name }}" >> $GITHUB_ENV
-            echo "RELEASE_NAME=iMACord ${{ github.ref_name }}" >> $GITHUB_ENV
+            echo "RELEASE_NAME=iMCord ${{ github.ref_name }}" >> $GITHUB_ENV
           else
             TAG="v1.0.${{ github.run_number }}"
             echo "TAG_NAME=$TAG" >> $GITHUB_ENV
-            echo "RELEASE_NAME=iMACord $TAG" >> $GITHUB_ENV
+            echo "RELEASE_NAME=iMCord $TAG" >> $GITHUB_ENV
           fi
 
       - name: Publish GitHub Release
@@ -68,13 +68,15 @@ jobs:
           prerelease: false
           generate_release_notes: true
           files: |
-            VencordInstaller.exe
-            VencordInstallerCli.exe
+            iMCord.exe
+            iMCordCLI.exe
+            iMCord.ico
             userplugins/manifest.json
             Vencord-main/dist/renderer.js
             Vencord-main/dist/renderer.css
             Vencord-main/dist/patcher.js
             Vencord-main/dist/preload.js
+            Vencord-main/dist/iMCord.ico
             userplugins/*.js
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

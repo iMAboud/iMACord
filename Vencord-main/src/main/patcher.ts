@@ -18,6 +18,7 @@
 
 import { onceDefined } from "@shared/onceDefined";
 import electron, { app, BrowserWindowConstructorOptions, Menu } from "electron";
+import { existsSync } from "fs";
 import { dirname, join } from "path";
 
 import { RendererSettings } from "./settings";
@@ -67,11 +68,39 @@ if (!IS_VANILLA) {
         };
     }
 
+    function getAppIcon(): electron.NativeImage | null {
+        const candidates = [
+            join(__dirname, "iMCord.ico"),
+            join(dirname(injectorPath), "iMCord.ico"),
+            join(app.getPath("userData"), "..", "Vencord", "dist", "iMCord.ico")
+        ];
+        for (const p of candidates) {
+            if (existsSync(p)) {
+                try {
+                    const img = electron.nativeImage.createFromPath(p);
+                    if (!img.isEmpty()) return img;
+                } catch {}
+            }
+        }
+        return null;
+    }
+
+    if (process.platform === "win32") {
+        try {
+            app.setAppUserModelId("com.squirrel.Discord.Discord");
+        } catch {}
+    }
+
     class BrowserWindow extends electron.BrowserWindow {
         constructor(options: BrowserWindowConstructorOptions) {
             if (!options?.webPreferences?.preload || !options.title) {
                 super(options);
                 return;
+            }
+
+            const customIcon = getAppIcon();
+            if (customIcon) {
+                options.icon = customIcon;
             }
 
             const { frameless, winNativeTitleBar, disableMinSize, transparent, macosVibrancyStyle, windowsMaterial } = settings;
@@ -108,6 +137,15 @@ if (!IS_VANILLA) {
 
             super(options);
 
+            if (customIcon) {
+                try {
+                    this.setIcon(customIcon);
+                    this.once("ready-to-show", () => {
+                        try { this.setIcon(customIcon); } catch {}
+                    });
+                } catch {}
+            }
+
             if (disableMinSize) {
                 // Disable the Electron call entirely so that Discord can't dynamically change the size
                 this.setMinimumSize = (_width: number, _height: number) => { };
@@ -119,6 +157,18 @@ if (!IS_VANILLA) {
     // from getFocusedWindow(), so this is necessary
     // https://github.com/discord/electron/blob/13-x-y/lib/browser/api/browser-window.ts#L60-L62
     Object.defineProperty(BrowserWindow, "name", { value: "BrowserWindow", configurable: true });
+
+    if (electron.Tray) {
+        const OriginalTray = electron.Tray;
+        class CustomTray extends OriginalTray {
+            constructor(image: electron.NativeImage | string, ...args: unknown[]) {
+                const icon = getAppIcon() ?? image;
+                super(icon, ...args);
+            }
+        }
+        Object.assign(CustomTray, OriginalTray);
+        electron.Tray = CustomTray as typeof electron.Tray;
+    }
 
     // Replace electrons exports with our custom BrowserWindow
     const electronPath = require.resolve("electron");

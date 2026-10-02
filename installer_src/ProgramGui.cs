@@ -69,7 +69,7 @@ namespace VencordInstaller
 
         public MainWindow()
         {
-            Title = "iMACord Installer";
+            Title = "iMCord Installer";
             Width = 980;
             Height = 640;
             MinWidth = 880;
@@ -194,7 +194,7 @@ namespace VencordInstaller
             left.Children.Add(puzzleIcon);
 
             TextBlock title = new TextBlock();
-            title.Text = "iMACord Installer";
+            title.Text = "iMCord Installer";
             title.FontSize = 12;
             title.FontWeight = FontWeights.SemiBold;
             title.Foreground = new SolidColorBrush(Color.FromRgb(226, 232, 240));
@@ -361,7 +361,7 @@ namespace VencordInstaller
             titleRow.Orientation = Orientation.Horizontal;
             titleRow.HorizontalAlignment = HorizontalAlignment.Center;
 
-            TextBlock tbVencord = new TextBlock() { Text = "iMACord", FontSize = 24, FontWeight = FontWeights.Bold, Foreground = Brushes.White };
+            TextBlock tbVencord = new TextBlock() { Text = "iMCord", FontSize = 24, FontWeight = FontWeights.Bold, Foreground = Brushes.White };
             TextBlock tbInstaller = new TextBlock() { Text = " Installer", FontSize = 24, FontWeight = FontWeights.Bold, Foreground = new SolidColorBrush(Color.FromRgb(168, 85, 247)) };
             titleRow.Children.Add(tbVencord);
             titleRow.Children.Add(tbInstaller);
@@ -430,7 +430,7 @@ namespace VencordInstaller
 
             StackPanel titleStack = new StackPanel();
             StackPanel mainTitle = new StackPanel() { Orientation = Orientation.Horizontal };
-            mainTitle.Children.Add(new TextBlock() { Text = "iMACord ", FontSize = 28, FontWeight = FontWeights.ExtraBold, Foreground = Brushes.White });
+            mainTitle.Children.Add(new TextBlock() { Text = "iMCord ", FontSize = 28, FontWeight = FontWeights.ExtraBold, Foreground = Brushes.White });
             mainTitle.Children.Add(new TextBlock() { Text = "Installer", FontSize = 28, FontWeight = FontWeights.ExtraBold, Foreground = new SolidColorBrush(Color.FromRgb(168, 85, 247)) });
             titleStack.Children.Add(mainTitle);
 
@@ -570,7 +570,7 @@ namespace VencordInstaller
             itemGrid.Children.Add(appIconBorder);
 
             StackPanel pathStack = new StackPanel() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 0, 0) };
-            _selectedCardTitle = new TextBlock() { Text = "iMACord Installed", FontSize = 13.5, FontWeight = FontWeights.Bold, Foreground = Brushes.White };
+            _selectedCardTitle = new TextBlock() { Text = "iMCord Installed", FontSize = 13.5, FontWeight = FontWeights.Bold, Foreground = Brushes.White };
             _selectedCardPath = new TextBlock() { Text = "C:\\Users\\iMA\\AppData\\Local\\Discord", FontSize = 11.5, Foreground = new SolidColorBrush(Color.FromRgb(126, 123, 150)), Margin = new Thickness(0, 2, 0, 0) };
             pathStack.Children.Add(_selectedCardTitle);
             pathStack.Children.Add(_selectedCardPath);
@@ -668,7 +668,7 @@ namespace VencordInstaller
 
             _statusText = new TextBlock()
             {
-                Text = "Selected: C:\\Users\\iMA\\AppData\\Local\\Discord (iMACord is active)",
+                Text = "Selected: C:\\Users\\iMA\\AppData\\Local\\Discord (iMCord is active)",
                 FontSize = 12,
                 Foreground = new SolidColorBrush(Color.FromRgb(141, 137, 164)),
                 Margin = new Thickness(8, 0, 0, 0),
@@ -697,7 +697,7 @@ namespace VencordInstaller
             _btnSettings.Width = 46;
             _btnSettings.Height = 46;
             _btnSettings.HorizontalAlignment = HorizontalAlignment.Left;
-            _btnSettings.ToolTip = "Open iMACord Plugins Directory";
+            _btnSettings.ToolTip = "Open iMCord Plugins Directory";
             _btnSettings.Click += delegate {
                 try {
                     if (!Directory.Exists(InstallerCore.VencordUserPluginsDir))
@@ -803,7 +803,7 @@ namespace VencordInstaller
                 return;
             }
 
-            _selectedCardTitle.Text = _selectedDiscord.IsPatched ? "iMACord Installed" : _selectedDiscord.Name;
+            _selectedCardTitle.Text = _selectedDiscord.IsPatched ? "iMCord Installed" : _selectedDiscord.Name;
             _selectedCardPath.Text = _selectedDiscord.BasePath;
             _customPathBox.Text = _selectedDiscord.BasePath;
 
@@ -811,7 +811,7 @@ namespace VencordInstaller
             _btnRepair.IsEnabled = true;
             _btnUninstall.IsEnabled = _selectedDiscord.IsPatched;
 
-            SetStatus("Selected: " + _selectedDiscord.BasePath + (_selectedDiscord.IsPatched ? " (iMACord is active)" : ""), StatusLevel.Info);
+            SetStatus("Selected: " + _selectedDiscord.BasePath + (_selectedDiscord.IsPatched ? " (iMCord is active)" : ""), StatusLevel.Info);
         }
 
         private Path CreatePath(string data, double width, double height, Color fill)
@@ -1096,7 +1096,7 @@ namespace VencordInstaller
             stack.Children.Add(_feedbackTitle);
 
             _feedbackSubtitle = new TextBlock();
-            _feedbackSubtitle.Text = "iMACord & plugins patched. Ready to launch Discord.";
+            _feedbackSubtitle.Text = "iMCord & plugins patched. Ready to launch Discord.";
             _feedbackSubtitle.FontSize = 13;
             _feedbackSubtitle.Foreground = new SolidColorBrush(Color.FromRgb(200, 240, 215));
             _feedbackSubtitle.TextAlignment = TextAlignment.Center;
@@ -1184,16 +1184,16 @@ namespace VencordInstaller
                         case ActionType.Install:
                         case ActionType.Repair:
                             InstallerCore.Install(_selectedDiscord, log);
-                            SetStatus("iMACord successfully installed! Custom plugins active. Restart Discord to apply changes.", StatusLevel.Success);
+                            SetStatus("iMCord successfully installed! Custom plugins active. Restart Discord to apply changes.", StatusLevel.Success);
                             Dispatcher.Invoke(new Action(delegate {
                                 RefreshDiscords();
-                                TriggerFeedbackOverlay("Patched Successfully!", "iMACord & plugins patched. Ready to launch Discord.", true);
+                                TriggerFeedbackOverlay("Patched Successfully!", "iMCord & plugins patched. Ready to launch Discord.", true);
                             }));
                             break;
 
                         case ActionType.Uninstall:
                             InstallerCore.Uninstall(_selectedDiscord, log);
-                            SetStatus("iMACord successfully uninstalled. Discord restored to stock.", StatusLevel.Success);
+                            SetStatus("iMCord successfully uninstalled. Discord restored to stock.", StatusLevel.Success);
                             Dispatcher.Invoke(new Action(delegate {
                                 RefreshDiscords();
                                 TriggerFeedbackOverlay("Uninstalled Successfully!", "Discord restored to original stock state.", false);
