@@ -76,7 +76,6 @@ jobs:
             Vencord-main/dist/renderer.css
             Vencord-main/dist/patcher.js
             Vencord-main/dist/preload.js
-            Vencord-main/dist/iMCord.ico
             userplugins/*.js
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

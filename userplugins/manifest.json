@@ -1,9 +1,9 @@
 {
   "version": "1.0.0",
-  "updatedAt": "2026-10-02T09:22:24.537Z",
+  "updatedAt": "2026-10-02T09:30:25.308Z",
   "dist": {
     "renderer.js": {
-      "hash": "71dee3bf3b4916e1b200c2133aa14f2b7f5c2cf534acf69a7835394e2512f1c8",
+      "hash": "b54f71f8967652866372ed2c1cee2c54ba44f55e811801ca16f1edb36ab345a4",
       "size": 2682070
     },
     "renderer.css": {
@@ -11,11 +11,11 @@
       "size": 48994
     },
     "patcher.js": {
-      "hash": "332eea51373cf43037ec3e8c56b242ef065d32ba20bb8804f15e288687a5a804",
-      "size": 44629
+      "hash": "24371dee07b93b2c7290d0b094fc4803701da1af0f11c17117dc3c0b9f5dd0c9",
+      "size": 44925
     },
     "preload.js": {
-      "hash": "b2f7fd78190700311f10860c6e5af18aee7d900d44913b6d63d9c4ebf4798765",
+      "hash": "b1b3ba865cc3a1011fb6a21a8871d0943e59c7dc65965132db096718ca55f5f2",
       "size": 2593
     }
   },
