@@ -1,6 +1,6 @@
 {
   "repo": "iMAboud/iMACord",
-  "updatedAt": "2026-10-02T06:56:27.910Z",
+  "updatedAt": "2026-10-02T06:58:20.254Z",
   "plugins": {
     "MultiStreamPopout.js": {
       "hash": "fcc7de78b086ece3d3b8ac8b08796038788cd0cfb951c24c1b9caf9fd2c83aad",
@@ -8,6 +8,13 @@
       "author": "iMAboud",
       "commit": "2d3e40b",
       "message": "."
+    },
+    "PerfProfiler.js": {
+      "hash": "3d6a983186bc0b911f00a4a3afdbfb61d121218e1ea31bc403684836489813e9",
+      "size": 18025,
+      "author": "iMAboud",
+      "commit": "55b7795",
+      "message": "Create PerfProfiler.js"
     },
     "amongick.js": {
       "hash": "58b2cd8bb1068e0e79cdb5315670f91abb4ece49197f1b3b466c5c1731607482",
