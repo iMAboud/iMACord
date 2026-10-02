@@ -18,5 +18,6 @@ yarn-debug.log*
 pnpm-debug.log*
 scratch/
 .system_generated/
+release_files.txt
 .DS_Store
 Thumbs.db
