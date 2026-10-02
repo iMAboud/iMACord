@@ -1,14 +1,7 @@
 {
   "repo": "iMAboud/iMACord",
-  "updatedAt": "2026-10-02T06:53:46.443Z",
+  "updatedAt": "2026-10-02T06:56:27.910Z",
   "plugins": {
-    "DiscordDebloater.js": {
-      "hash": "fa968f06bbe4acb7a83de03d673b8f2fc3aad128dcbadf0781242876958415ae",
-      "size": 4762,
-      "author": "iMAboud",
-      "commit": "2d3e40b",
-      "message": "."
-    },
     "MultiStreamPopout.js": {
       "hash": "fcc7de78b086ece3d3b8ac8b08796038788cd0cfb951c24c1b9caf9fd2c83aad",
       "size": 2279,
