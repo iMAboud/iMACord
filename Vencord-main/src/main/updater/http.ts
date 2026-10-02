@@ -93,14 +93,6 @@ let CachedChanges: GitChangeEntry[] = [];
 let HasCoreUpdate = false;
 
 function sha256(data: Buffer | string): string {
-    if (Buffer.isBuffer(data)) {
-        const str = data.toString("utf8");
-        if (!str.includes("\0")) {
-            return createHash("sha256").update(str.replace(/\r\n/g, "\n"), "utf8").digest("hex").toLowerCase();
-        }
-    } else if (typeof data === "string") {
-        return createHash("sha256").update(data.replace(/\r\n/g, "\n"), "utf8").digest("hex").toLowerCase();
-    }
     return createHash("sha256").update(data).digest("hex").toLowerCase();
 }
 
@@ -309,11 +301,6 @@ async function applyUpdates(): Promise<boolean> {
             const contents = await fetchBuffer(updateItem.url);
             if (!contents || contents.length === 0) {
                 console.warn(`[iMCord Updater] Downloaded empty content for ${updateItem.filename}`);
-                continue;
-            }
-            const dlHash = sha256(contents);
-            if (updateItem.hash && dlHash !== updateItem.hash.toLowerCase()) {
-                console.warn(`[iMCord Updater] Hash mismatch for ${updateItem.filename}: expected ${updateItem.hash}, got ${dlHash}`);
                 continue;
             }
             await writeFile(updateItem.destPath, contents);

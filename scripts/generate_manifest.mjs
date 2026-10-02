@@ -4,14 +4,6 @@ import { join } from "path";
 import { execSync } from "child_process";
 
 function sha256(data) {
-    if (Buffer.isBuffer(data)) {
-        const str = data.toString("utf8");
-        if (!str.includes("\0")) {
-            return createHash("sha256").update(str.replace(/\r\n/g, "\n"), "utf8").digest("hex").toLowerCase();
-        }
-    } else if (typeof data === "string") {
-        return createHash("sha256").update(data.replace(/\r\n/g, "\n"), "utf8").digest("hex").toLowerCase();
-    }
     return createHash("sha256").update(data).digest("hex").toLowerCase();
 }
 
