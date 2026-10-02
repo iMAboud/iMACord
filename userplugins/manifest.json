@@ -1,6 +1,6 @@
 {
   "repo": "iMAboud/iMACord",
-  "updatedAt": "2026-10-02T10:16:25.170Z",
+  "updatedAt": "2026-10-02T10:24:56.551Z",
   "plugins": {
     "CustomFont.js": {
       "hash": "afa9b0e316c1dad981f4fadcd767b2b250d9971eec23697e321b4b82eb472a5b",
@@ -24,11 +24,11 @@
       "message": "."
     },
     "VoiceReconnect.js": {
-      "hash": "58b2cd8bb1068e0e79cdb5315670f91abb4ece49197f1b3b466c5c1731607482",
+      "hash": "f0223756e0b614b156ef0120f2f6bc7963fdcb41e36abf3d4490046e7f49fb8d",
       "size": 1838401,
       "author": "F2isalq",
-      "commit": "049e6d3",
-      "message": "Add files via upload"
+      "commit": "045b4cc",
+      "message": "Update VoiceReconnect.js"
     },
     "amongick.js": {
       "hash": "58b2cd8bb1068e0e79cdb5315670f91abb4ece49197f1b3b466c5c1731607482",
