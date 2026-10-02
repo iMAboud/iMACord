@@ -1,27 +1,34 @@
 {
-  "version": "1.0.0",
-  "updatedAt": "2026-10-02T08:37:27.318Z",
-  "dist": {},
+  "repo": "iMAboud/iMACord",
+  "updatedAt": "2026-10-02T08:38:46.511Z",
   "plugins": {
-    "amongick.js": {
-      "hash": "58b2cd8bb1068e0e79cdb5315670f91abb4ece49197f1b3b466c5c1731607482",
-      "size": 1838401,
-      "author": "iMAboud"
-    },
     "DiscordDebloater.js": {
       "hash": "fa968f06bbe4acb7a83de03d673b8f2fc3aad128dcbadf0781242876958415ae",
       "size": 4762,
-      "author": "iMAboud"
-    },
-    "iMAMenu.js": {
-      "hash": "2d30028f95bf0a02bb51866e9137837feaff0f501ec1bcef773484828d64bbea",
-      "size": 184976,
-      "author": "iMAboud"
+      "author": "iMAboud",
+      "commit": "c10da4a",
+      "message": "feat: add Vencord source, standalone installers, auto-release workflow, and user plugins"
     },
     "MultiStreamPopout.js": {
       "hash": "fcc7de78b086ece3d3b8ac8b08796038788cd0cfb951c24c1b9caf9fd2c83aad",
       "size": 2279,
-      "author": "iMAboud"
+      "author": "iMAboud",
+      "commit": "2d3e40b",
+      "message": "."
+    },
+    "amongick.js": {
+      "hash": "58b2cd8bb1068e0e79cdb5315670f91abb4ece49197f1b3b466c5c1731607482",
+      "size": 1838401,
+      "author": "iMAboud",
+      "commit": "2d3e40b",
+      "message": "."
+    },
+    "iMAMenu.js": {
+      "hash": "2d30028f95bf0a02bb51866e9137837feaff0f501ec1bcef773484828d64bbea",
+      "size": 184976,
+      "author": "iMAboud",
+      "commit": "2d3e40b",
+      "message": "."
     }
   }
 }
