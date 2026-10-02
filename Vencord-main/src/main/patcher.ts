@@ -158,24 +158,22 @@ if (!IS_VANILLA) {
     // https://github.com/discord/electron/blob/13-x-y/lib/browser/api/browser-window.ts#L60-L62
     Object.defineProperty(BrowserWindow, "name", { value: "BrowserWindow", configurable: true });
 
-    if (electron.Tray) {
-        const OriginalTray = electron.Tray;
-        class CustomTray extends OriginalTray {
-            constructor(image: electron.NativeImage | string, ...args: unknown[]) {
-                const icon = getAppIcon() ?? image;
-                super(icon, ...args);
-            }
+    class Tray extends electron.Tray {
+        constructor(image: electron.NativeImage | string, ...args: unknown[]) {
+            const icon = getAppIcon() ?? image;
+            super(icon, ...args);
         }
-        Object.assign(CustomTray, OriginalTray);
-        electron.Tray = CustomTray as typeof electron.Tray;
     }
+    Object.assign(Tray, electron.Tray);
+    Object.defineProperty(Tray, "name", { value: "Tray", configurable: true });
 
-    // Replace electrons exports with our custom BrowserWindow
+    // Replace electrons exports with our custom BrowserWindow and Tray
     const electronPath = require.resolve("electron");
     delete require.cache[electronPath]!.exports;
     require.cache[electronPath]!.exports = {
         ...electron,
-        BrowserWindow
+        BrowserWindow,
+        Tray
     };
 
     // Patch appSettings to force enable devtools
