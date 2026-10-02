@@ -60,7 +60,7 @@ definePlugin({
         @keyframes vr-blink{0%{opacity:1}50%{opacity:.12}}`;
         document.head.appendChild(style);
 
-        const VOLUME = 0.3;
+        const VOLUME = 0.7;
 
         const removeById = (id) => { const e = document.getElementById(id); if (e) e.remove(); };
 
