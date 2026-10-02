@@ -1,6 +1,6 @@
 {
   "repo": "iMAboud/iMACord",
-  "updatedAt": "2026-10-02T07:00:07.795Z",
+  "updatedAt": "2026-10-02T07:22:05.990Z",
   "plugins": {
     "MultiStreamPopout.js": {
       "hash": "fcc7de78b086ece3d3b8ac8b08796038788cd0cfb951c24c1b9caf9fd2c83aad",
@@ -12,13 +12,6 @@
     "amongick.js": {
       "hash": "58b2cd8bb1068e0e79cdb5315670f91abb4ece49197f1b3b466c5c1731607482",
       "size": 1838401,
-      "author": "iMAboud",
-      "commit": "2d3e40b",
-      "message": "."
-    },
-    "blink.js": {
-      "hash": "9958d74c52f14f9b9c7732c308cb340bde90c2e870b8e4ad1cc6ec60da0f8880",
-      "size": 5774,
       "author": "iMAboud",
       "commit": "2d3e40b",
       "message": "."
