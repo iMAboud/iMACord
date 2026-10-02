@@ -1,0 +1,428 @@
+/*
+ * Vencord, a modification for Discord's desktop app
+ * Copyright (c) 2022 Vendicated and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
+.vc-plugins-grid {
+    margin-top: 14px;
+    display: grid;
+    gap: 14px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+
+    @media (width <= 820px) {
+        grid-template-columns: 1fr;
+    }
+}
+
+.vc-plugins-section-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 22px;
+    margin-bottom: 10px;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--header-primary, #f2f3f5);
+    letter-spacing: 0.02em;
+}
+
+.vc-plugins-section-icon {
+    color: #8b5cf6;
+    flex-shrink: 0;
+}
+
+.vc-plugins-search-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 100%;
+}
+
+.vc-plugins-search-icon {
+    position: absolute;
+    left: 14px;
+    color: var(--text-muted, #949ba4);
+    pointer-events: none;
+    z-index: 1;
+}
+
+.vc-plugins-search-input {
+    padding-left: 38px !important;
+    border-radius: 12px !important;
+    background: rgb(18 19 28 / 75%) !important;
+    border: 1px solid rgb(255 255 255 / 8%) !important;
+    height: 42px !important;
+    color: var(--text-normal, #f2f3f5) !important;
+    font-size: 14px !important;
+    transition: all 0.2s ease !important;
+
+    &:focus {
+        border-color: rgb(139 92 246 / 60%) !important;
+        box-shadow: 0 0 14px rgb(139 92 246 / 25%) !important;
+    }
+}
+
+.vc-plugins-info-button {
+    height: 24px;
+    width: 24px;
+    padding: 0;
+    background: transparent;
+    margin-right: 4px;
+    color: var(--icon-muted, #949ba4);
+    border: none;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+
+    &:hover {
+        color: var(--interactive-icon-hover, #fff);
+        transform: scale(1.1);
+    }
+}
+
+.vc-plugins-settings-button:hover {
+    color: var(--interactive-icon-hover);
+}
+
+.vc-plugins-filter-controls {
+    display: grid;
+    height: 40px;
+    gap: 12px;
+    grid-template-columns: 1fr 1fr;
+    align-items: center;
+}
+
+.vc-plugins-filter-control {
+    height: 40px;
+}
+
+.vc-addon-badge {
+    padding: 2px 7px;
+    font-family: var(--font-display);
+    font-weight: 700;
+    border-radius: 9999px;
+    font-size: 10px;
+    line-height: 14px;
+    color: #fff;
+    background: linear-gradient(135deg, #a855f7 0%, #7c3aed 100%) !important;
+    box-shadow: 0 2px 8px rgb(168 85 247 / 35%);
+    text-align: center;
+    letter-spacing: 0.04em;
+}
+
+.vc-plugins-dep-name {
+    margin: 0 auto;
+}
+
+.vc-plugins-info-card {
+    padding: 16px 20px;
+    min-height: auto;
+    height: auto;
+    border-radius: 16px;
+    background: linear-gradient(90deg, rgb(20 22 34 / 95%) 0%, rgb(38 30 68 / 85%) 100%);
+    border: 1px solid rgb(139 92 246 / 25%);
+    box-shadow: 0 4px 20px rgb(0 0 0 / 30%);
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 16px;
+}
+
+.vc-plugins-banner-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%);
+    box-shadow: 0 4px 16px rgb(139 92 246 / 40%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    flex-shrink: 0;
+}
+
+.vc-plugins-banner-text {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.vc-plugins-restart-button {
+    margin-top: 0.5em;
+    background: var(--icon-status-idle) !important;
+}
+
+.vc-plugins-info-icon:not(:hover, :focus) {
+    color: var(--text-muted);
+}
+
+.vc-plugins-settings {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25em;
+}
+
+.vc-plugins-top-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 14px;
+    margin-bottom: 6px;
+    flex-wrap: wrap;
+
+    .vc-plugin-ui-elements-button {
+        margin-top: 0;
+        height: 48px;
+        box-sizing: border-box;
+    }
+}
+
+.vc-plugins-action-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    height: 48px;
+    padding: 0 20px;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    outline: none;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    user-select: none;
+    white-space: nowrap;
+    box-sizing: border-box;
+}
+
+.vc-plugins-btn-icon {
+    flex-shrink: 0;
+}
+
+.vc-plugins-add-btn {
+    background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%);
+    color: #fff;
+    box-shadow: 0 4px 16px rgb(139 92 246 / 35%), inset 0 1px 0 rgb(255 255 255 / 20%);
+
+    &:hover {
+        background: linear-gradient(135deg, #9333ea 0%, #4f46e5 100%);
+        box-shadow: 0 6px 22px rgb(147 51 234 / 50%), inset 0 1px 0 rgb(255 255 255 / 30%);
+        transform: translateY(-1px);
+    }
+
+    &:active {
+        transform: translateY(0);
+        box-shadow: 0 2px 10px rgb(139 92 246 / 30%);
+    }
+}
+
+.vc-plugins-folder-btn {
+    background: var(--background-secondary-alt, rgb(30 31 41 / 70%));
+    border: 1px solid rgb(255 255 255 / 8%);
+    color: var(--text-normal, #e0e1e5);
+    box-shadow: 0 2px 8px rgb(0 0 0 / 20%);
+
+    &:hover {
+        background: var(--background-modifier-hover, rgb(255 255 255 / 8%));
+        border-color: rgb(255 255 255 / 16%);
+        color: var(--text-primary, #fff);
+        transform: translateY(-1px);
+    }
+
+    &:active {
+        transform: translateY(0);
+        background: var(--background-modifier-active, rgb(255 255 255 / 5%));
+    }
+}
+
+/* Custom Plugin Modal Popup Styles */
+.vc-cpm-modal-content {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 6px 0;
+}
+
+.vc-cpm-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.vc-cpm-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-muted, #949ba4);
+}
+
+.vc-cpm-file-drop {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    border-radius: 12px;
+    background: rgb(24 26 38 / 70%);
+    border: 1px dashed rgb(139 92 246 / 40%);
+    color: var(--text-normal, #f2f3f5);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+
+    &:hover {
+        background: rgb(32 34 50 / 80%);
+        border-color: #8b5cf6;
+        box-shadow: 0 0 12px rgb(139 92 246 / 20%);
+    }
+
+    svg {
+        color: #a78bfa;
+        flex-shrink: 0;
+    }
+}
+
+.vc-cpm-input {
+    border-radius: 12px !important;
+    background: rgb(20 22 34 / 85%) !important;
+    border: 1px solid rgb(255 255 255 / 10%) !important;
+    height: 42px !important;
+    color: var(--text-normal, #f2f3f5) !important;
+    padding: 0 14px !important;
+    font-size: 14px !important;
+
+    &:focus {
+        border-color: rgb(139 92 246 / 60%) !important;
+        box-shadow: 0 0 14px rgb(139 92 246 / 25%) !important;
+    }
+}
+
+.vc-cpm-textarea {
+    border-radius: 12px;
+    background: rgb(18 20 30 / 90%);
+    border: 1px solid rgb(255 255 255 / 10%);
+    color: var(--text-normal, #f2f3f5);
+    font-family: var(--font-code, monospace);
+    font-size: 13px;
+    padding: 12px 14px;
+    resize: vertical;
+    line-height: 1.5;
+    outline: none;
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 200px;
+    transition: all 0.2s ease;
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-auto-thumb, rgb(30 31 46 / 90%)) var(--scrollbar-auto-track, transparent);
+
+    &::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+    }
+
+    &::-webkit-scrollbar-track {
+        background-color: var(--scrollbar-auto-track, transparent);
+        border: 2px solid transparent;
+        background-clip: padding-box;
+    }
+
+    &::-webkit-scrollbar-thumb {
+        background-color: var(--scrollbar-auto-thumb, rgb(43 45 66 / 90%));
+        min-height: 40px;
+        border: 2px solid transparent;
+        border-radius: 6px;
+        background-clip: padding-box;
+    }
+
+    &::-webkit-scrollbar-thumb:hover {
+        background-color: var(--scrollbar-auto-thumb-hover, rgb(60 62 90 / 95%));
+    }
+
+    &:focus {
+        border-color: rgb(139 92 246 / 60%);
+        box-shadow: 0 0 14px rgb(139 92 246 / 25%);
+    }
+}
+
+.vc-cpm-footer {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 10px;
+}
+
+.vc-cpm-save-btn {
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    height: 44px;
+    padding: 0 20px;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    outline: none;
+    user-select: none;
+    background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%);
+    color: #fff;
+    box-shadow: 0 4px 16px rgb(139 92 246 / 35%), inset 0 1px 0 rgb(255 255 255 / 20%);
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+
+    &:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    &:hover:not(:disabled) {
+        background: linear-gradient(135deg, #9333ea 0%, #4f46e5 100%);
+        box-shadow: 0 6px 22px rgb(147 51 234 / 50%), inset 0 1px 0 rgb(255 255 255 / 30%);
+        transform: translateY(-1px);
+    }
+
+    &:active:not(:disabled) {
+        transform: translateY(0);
+    }
+}
+
+.vc-cpm-cancel-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 44px;
+    padding: 0 20px;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid rgb(255 255 255 / 10%);
+    outline: none;
+    background: var(--background-secondary-alt, rgb(30 31 41 / 70%));
+    color: var(--text-normal, #e0e1e5);
+    transition: all 0.2s ease;
+
+    &:hover {
+        background: var(--background-modifier-hover, rgb(255 255 255 / 8%));
+        border-color: rgb(255 255 255 / 18%);
+        color: #fff;
+    }
+}
