@@ -17,7 +17,7 @@ const manifest = {
     plugins: {}
 };
 
-const distFiles = ["renderer.js", "renderer.css", "patcher.js", "preload.js", "iMCord.ico"];
+const distFiles = ["renderer.js", "renderer.css", "patcher.js", "preload.js"];
 for (const file of distFiles) {
     const fullPath = join(distDir, file);
     if (existsSync(fullPath)) {

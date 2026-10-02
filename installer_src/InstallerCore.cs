@@ -41,8 +41,7 @@ namespace VencordInstaller
             "patcher.js",
             "preload.js",
             "renderer.js",
-            "renderer.css",
-            "iMCord.ico"
+            "renderer.css"
         };
 
         public static readonly string[] EmbeddedPluginFiles = new string[]

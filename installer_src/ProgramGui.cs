@@ -91,7 +91,8 @@ namespace VencordInstaller
                 Assembly asm = Assembly.GetExecutingAssembly();
                 foreach (string n in asm.GetManifestResourceNames())
                 {
-                    if (n.EndsWith("vencord.ico", StringComparison.OrdinalIgnoreCase))
+                    if (n.EndsWith("iMCord.ico", StringComparison.OrdinalIgnoreCase) ||
+                        n.EndsWith("vencord.ico", StringComparison.OrdinalIgnoreCase))
                     {
                         using (Stream s = asm.GetManifestResourceStream(n))
                         {

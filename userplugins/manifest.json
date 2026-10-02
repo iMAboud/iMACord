@@ -1,9 +1,9 @@
 {
   "version": "1.0.0",
-  "updatedAt": "2026-10-02T09:10:33.091Z",
+  "updatedAt": "2026-10-02T09:22:24.537Z",
   "dist": {
     "renderer.js": {
-      "hash": "c019d3f24490ac3fbd5d5221221077aa0dfcd312c10dd9e2d97ba49e3edc81f0",
+      "hash": "71dee3bf3b4916e1b200c2133aa14f2b7f5c2cf534acf69a7835394e2512f1c8",
       "size": 2682070
     },
     "renderer.css": {
@@ -11,16 +11,12 @@
       "size": 48994
     },
     "patcher.js": {
-      "hash": "f02fbff26271b4441d71cead615be5ab21fcc9e4132f591c898c5fb9dae97b44",
-      "size": 45107
+      "hash": "332eea51373cf43037ec3e8c56b242ef065d32ba20bb8804f15e288687a5a804",
+      "size": 44629
     },
     "preload.js": {
-      "hash": "c85db46c4610222280539ad2c361ea0f540dcbcaac04f33268a43b9ac1e7b856",
+      "hash": "b2f7fd78190700311f10860c6e5af18aee7d900d44913b6d63d9c4ebf4798765",
       "size": 2593
-    },
-    "iMCord.ico": {
-      "hash": "ce2063bdf51894c12030f1f2bb22be8f857389ea89020e38a115c2d3c5a35094",
-      "size": 208186
     }
   },
   "plugins": {

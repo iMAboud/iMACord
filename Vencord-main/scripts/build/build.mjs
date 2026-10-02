@@ -218,10 +218,3 @@ const buildConfigs = ([
 ]);
 
 await buildOrWatchAll(buildConfigs);
-
-try {
-    const icoPath = exists("iMCord.ico") ? "iMCord.ico" : exists("../iMCord.ico") ? "../iMCord.ico" : null;
-    if (icoPath) {
-        await copyFile(icoPath, "dist/iMCord.ico");
-    }
-} catch {}

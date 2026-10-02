@@ -296,27 +296,27 @@ async function fetchUpdates(): Promise<boolean> {
 async function applyUpdates(): Promise<boolean> {
     if (PendingUpdates.length === 0) return true;
 
-    const hadCoreUpdate = HasCoreUpdate;
-
     for (const updateItem of PendingUpdates) {
-        const contents = await fetchBuffer(updateItem.url);
-        await writeFile(updateItem.destPath, contents);
+        try {
+            const contents = await fetchBuffer(updateItem.url);
+            if (!contents || contents.length === 0) {
+                console.warn(`[iMCord Updater] Downloaded empty content for ${updateItem.filename}`);
+                continue;
+            }
+            const dlHash = sha256(contents);
+            if (updateItem.hash && dlHash !== updateItem.hash.toLowerCase()) {
+                console.warn(`[iMCord Updater] Hash mismatch for ${updateItem.filename}: expected ${updateItem.hash}, got ${dlHash}`);
+                continue;
+            }
+            await writeFile(updateItem.destPath, contents);
+        } catch (err) {
+            console.error(`[iMCord Updater] Failed to apply update for ${updateItem.filename}:`, err);
+        }
     }
 
     PendingUpdates = [];
     CachedChanges = [];
     HasCoreUpdate = false;
-
-    if (hadCoreUpdate) {
-        setTimeout(() => {
-            try {
-                app.relaunch();
-                app.exit(0);
-            } catch {
-                // Ignore if renderer initiates relaunch
-            }
-        }, 1000);
-    }
 
     return true;
 }
