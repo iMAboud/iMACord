@@ -48,7 +48,8 @@ namespace VencordInstaller
         {
             "iMAMenu.js",
             "MultiStreamPopout.js",
-            "amongick.js"
+            "amongick.js",
+            "DiscordDebloater.js"
         };
 
         private static readonly Dictionary<string, string> BranchNames = new Dictionary<string, string>()
