@@ -295,7 +295,7 @@ definePlugin({
             if (inVoice()) return;
             sDel(KEY);
             log("saved channel cleared (you left)");
-        }, 5000);
+        }, 30000); // لو الديسكورد تسكّر خلال هالمدة ينلغي المسح (الإغلاق أحياناً ياخذ أكثر من 5 ثواني)
 
         // كم دقيقة بعد ما تسكّر الديسكورد يقدر يرجعك للروم لما تفتحه
         const REJOIN_WINDOW_MIN = 30;
@@ -481,11 +481,15 @@ definePlugin({
             }
         }, 5000);
 
+        const isBlocked = () => {
+            try { const until = Number(sGet(BLOCK_KEY)); return !!(until && Date.now() < until); } catch (e) { return false; }
+        };
+
+        let whyLogged = "";
+        const why = (msg) => { if (whyLogged !== msg) { whyLogged = msg; log("startup:", msg); } };
+
         const getTarget = () => {
-            try {
-                const until = Number(sGet(BLOCK_KEY));
-                if (until && Date.now() < until) return null;
-            } catch (e) { }
+            if (isBlocked()) { why("blocked (permanent kick) — use __vrUnblock()"); return null; }
             try {
                 const m = me();
                 const vs = m && VoiceStateStore.getVoiceStateForUser(m.id);
@@ -494,7 +498,8 @@ definePlugin({
             try {
                 const saved = JSON.parse(sGet(KEY));
                 if (saved && Date.now() - saved.ts < REJOIN_WINDOW_MIN * 60 * 1000) return saved.channelId;
-            } catch (e) { }
+                why(saved ? "saved channel too old" : "no saved channel");
+            } catch (e) { why("saved channel unreadable"); }
             return null;
         };
 
@@ -502,6 +507,17 @@ definePlugin({
         // لأن الديسكورد بعد التحديث ياخذ وقت لين يتصل، والمحاولات الأولى كانت تروح على الفاضي
         let storageReady = false;
         loadKeys([KEY, BLOCK_KEY]).then(() => { storageReady = true; });
+
+        let bannerClicked = false;
+        const clickDiscordReconnect = () => {
+            if (bannerClicked || isBlocked()) return;
+            const btn = [...document.querySelectorAll('[class*="notice"] button, [class*="notice"] [role="button"]')]
+                .find((b) => /reconnect|إعادة الاتصال|اعادة الاتصال/i.test(b.textContent || ""));
+            if (!btn) return;
+            bannerClicked = true;
+            log("startup: clicking Discord's Reconnect banner");
+            btn.click();
+        };
 
         const startedAt = Date.now();
         let tries = 0;
@@ -514,7 +530,12 @@ definePlugin({
             if (Date.now() - lastTry < 4000) return;
             if (inVoice()) { log("already in voice, done"); clearInterval(window.__vrTimer); return; }
             const id = getTarget();
-            if (!id || !ChannelStore.getChannel(id)) return;
+            if (!id || !ChannelStore.getChannel(id)) {
+                if (id) why("channel not loaded yet " + id);
+                // احتياط: إذا البلوقن ما لقى الروم، نضغط زر Reconnect حق الديسكورد نفسه
+                if (Date.now() - startedAt > 8000) clickDiscordReconnect();
+                return;
+            }
             tries++;
             lastTry = Date.now();
             log("joining", id, "try", tries);
