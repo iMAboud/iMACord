@@ -43,7 +43,7 @@ function ContributorModal({ user, modalProps }: { user: User; modalProps: Render
         const allPlugins = Object.values(Plugins);
         const pluginsByAuthor = DevsById[user.id]
             ? allPlugins.filter(p => p.authors.includes(DevsById[user.id]))
-            : allPlugins.filter(p => p.authors.some(a => a.name === user.username));
+            : allPlugins.filter(p => p.authors.some(a => a.name.toLowerCase() === user.username?.toLowerCase() || (user.id && String(a.id) === String(user.id))));
 
         return pluginsByAuthor
             .filter(p => !p.name.endsWith("API"))

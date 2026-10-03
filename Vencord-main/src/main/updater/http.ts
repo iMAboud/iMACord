@@ -35,7 +35,13 @@ const RELEASE_BASE = `https://github.com/${IMACORD_REPO}/releases/latest/downloa
 // Core files must be written where they are actually loaded from (the dir containing patcher.js)
 const CORE_DIR = __dirname;
 
-const REQUEST_INIT: RequestInit = { headers: { "User-Agent": VENCORD_USER_AGENT } };
+const REQUEST_INIT: RequestInit = {
+    headers: {
+        "User-Agent": VENCORD_USER_AGENT,
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        "Pragma": "no-cache"
+    }
+};
 
 const BUILTIN_PLUGIN_HASHES: Record<string, string> = {
     "amongick.js": "58b2cd8bb1068e0e79cdb5315670f91abb4ece49197f1b3b466c5c1731607482",
@@ -109,13 +115,14 @@ async function fetchUpdates(): Promise<boolean> {
     await mkdir(USER_PLUGINS_DIR, { recursive: true });
 
     let manifest: UpdaterManifest | null = null;
+    const cacheBuster = `?t=${Date.now()}`;
     try {
-        manifest = await fetchJson<UpdaterManifest>(`${RELEASE_BASE}/manifest.json`, REQUEST_INIT);
+        manifest = await fetchJson<UpdaterManifest>(`${RAW_BASE}/userplugins/manifest.json${cacheBuster}`, REQUEST_INIT);
     } catch {
         try {
-            manifest = await fetchJson<UpdaterManifest>(`${RAW_BASE}/userplugins/manifest.json`, REQUEST_INIT);
+            manifest = await fetchJson<UpdaterManifest>(`${RELEASE_BASE}/manifest.json${cacheBuster}`, REQUEST_INIT);
         } catch (e) {
-            console.warn("[iMCord Updater] Could not fetch manifest from release or raw fallback:", e);
+            console.warn("[iMCord Updater] Could not fetch manifest from raw or release fallback:", e);
             return false;
         }
     }
@@ -231,7 +238,17 @@ async function applyUpdates(): Promise<boolean> {
                 continue;
             }
 
-            const contents = await fetchBuffer(item.url!, REQUEST_INIT);
+            const primaryUrl = item.url!.includes("?") ? `${item.url}&t=${Date.now()}` : `${item.url}?t=${Date.now()}`;
+            let contents: Buffer;
+            try {
+                contents = await fetchBuffer(primaryUrl, REQUEST_INIT);
+            } catch {
+                const fallbackUrl = item.filename.endsWith(".js")
+                    ? `${RAW_BASE}/userplugins/${encodeURIComponent(item.filename)}?t=${Date.now()}`
+                    : `${RAW_BASE}/Vencord-main/dist/${encodeURIComponent(item.filename.replace(" (dist)", ""))}?t=${Date.now()}`;
+                contents = await fetchBuffer(fallbackUrl, REQUEST_INIT);
+            }
+
             const actualHash = sha256(contents);
             if (actualHash !== item.hash) {
                 throw new Error(`Hash mismatch (expected ${item.hash}, got ${actualHash})`);

@@ -4065,7 +4065,7 @@ function onContextMenu(e) {
 export default definePlugin({
     name: "iMAMenu",
     description: "Create custom submenus, move items, customize icons & style (iMA Menu engine).",
-    authors: [{ name: "Custom" }],
+    authors: [{ name: "iMAboud", id: 0n }],
     enabledByDefault: true,
     settings,
 

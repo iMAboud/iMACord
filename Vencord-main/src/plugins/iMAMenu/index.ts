@@ -1,3 +1,4 @@
+import { Devs } from "@utils/constants";
 import definePlugin, { OptionType } from "@utils/types";
 import { definePluginSettings } from "@api/Settings";
 
@@ -4116,7 +4117,7 @@ function onContextMenu(e) {
 export default definePlugin({
     name: "iMAMenu",
     description: "Create custom submenus, move items, customize icons & style (iMA Menu engine).",
-    authors: [{ name: "Custom", id: 0n }],
+    authors: [Devs.iMAboud],
     enabledByDefault: true,
     settings,
 

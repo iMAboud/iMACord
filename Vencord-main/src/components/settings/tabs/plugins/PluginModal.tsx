@@ -92,12 +92,21 @@ export default function PluginModal({ plugin, onRestartNeeded, onClose, transiti
         (async () => {
             for (const user of plugin.authors.slice(0, 6)) {
                 try {
-                    const author = user.id
-                        ? await UserUtils.getUser(String(user.id))
-                            .catch(() => makeDummyUser({ username: user.name }))
-                        : makeDummyUser({ username: user.name });
+                    let author: Partial<User> | null = null;
+                    if (user.id && user.id !== 0n && String(user.id) !== "0") {
+                        author = await UserUtils.getUser(String(user.id))
+                            .catch(() => null);
+                    }
+                    if (!author) {
+                        const cur = UserStore.getCurrentUser();
+                        if (cur && (cur.username?.toLowerCase() === user.name.toLowerCase() || cur.globalName?.toLowerCase() === user.name.toLowerCase())) {
+                            author = cur;
+                        } else {
+                            author = UserStore.findByTag(user.name) || makeDummyUser({ username: user.name });
+                        }
+                    }
 
-                    setAuthors(a => [...a, author]);
+                    setAuthors(a => [...a, author!]);
                 } catch (e) {
                     continue;
                 }
