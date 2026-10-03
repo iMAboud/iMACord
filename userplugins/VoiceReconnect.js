@@ -234,10 +234,15 @@ definePlugin({
         const BLOCK_KEY = "VoiceReconnect_block";
         let kickTimes = [];
 
+        // يمنع معالجة نفس الطردة مرتين (الديسكورد أحياناً يرسل حدث الخروج أكثر من مرة،
+        // وكان هذا يحسبها طردتين = طرد نهائي ويوقف الرجوع)
+        let kickPending = false;
+
         const onForcedDisconnect = (guildId) => {
             const since = Date.now();
-            if (navigator.onLine === false) { showNet(); needNetRejoin = true; return; }
-            if (!guildId) return;
+            const ch = lastChannel; // نحفظ الروم لحظة الطرد
+            if (navigator.onLine === false) { showNet(); needNetRejoin = true; kickPending = false; return; }
+            if (!guildId) { kickPending = false; return; }
             const check = (attempt) => later(async () => {
                 const uid = await findActor(guildId, AUDIT_DISCONNECT, since);
                 if (uid && uid !== me().id) {
@@ -255,17 +260,23 @@ definePlugin({
                             localStorage.removeItem(KEY);
                             localStorage.setItem(BLOCK_KEY, String(now + 10 * 60 * 1000));
                         } catch (e) { }
+                        kickPending = false;
                         showStab(name, true);
                         later(() => showNotice(name + " طلّعك نهائياً — البلوقن ما راح يرجعك للروم", 10000), 3300);
                     } else {
-                        showStab(name);
-                        rejoin(lastChannel, 5);
+                        kickPending = false;
+                        rejoin(ch, 5);
+                        try { showStab(name); } catch (e) { log("stab failed", e && e.message); }
                     }
                 } else if (attempt < 2) check(attempt + 1);
-                else if (!inVoice()) {
-                    // طلعت بنفسك → لا نرجعك
-                    try { localStorage.removeItem(KEY); } catch (e) { }
-                    lastChannel = null;
+                else {
+                    kickPending = false;
+                    if (!inVoice()) {
+                        // طلعت بنفسك → لا نرجعك
+                        log("left by yourself (no kicker found in audit log)");
+                        try { localStorage.removeItem(KEY); } catch (e) { }
+                        lastChannel = null;
+                    }
                 }
             }, attempt === 0 ? 1500 : 3000);
             check(0);
@@ -310,12 +321,24 @@ definePlugin({
         FluxDispatcher.subscribe("VOICE_CHANNEL_SELECT", onSelfSelect);
 
         // ===================== أحداث الفلكس =====================
+        // سجل الطرد في الديسكورد ما يحفظ مين انطرد، بس عدّاد. فلو أحد ثاني انطرد ثم طلعت أنت بنفسك
+        // كان البلوقن يحسبها عليك. الحل: نحدّث اللقطة كل ما أحد ثاني يطلع/ينتقل في نفس السيرفر
+        let snapTimer = null;
+        const refreshSnapSoon = (guildId) => {
+            if (snapTimer) return;
+            snapTimer = later(() => { snapTimer = null; takeSnapshot(guildId); }, 2500);
+        };
+
         const onVoiceStates = ({ voiceStates }) => {
             const m = me();
             if (!m || !voiceStates) return;
             for (const s of voiceStates) {
-                if (s.userId !== m.id) continue;
+                if (s.userId !== m.id) {
+                    if (lastGuild && s.guildId === lastGuild && inVoice()) refreshSnapSoon(lastGuild);
+                    continue;
+                }
                 if (s.channelId) {
+                    kickPending = false;
                     if (s.channelId !== lastChannel) {
                         const bySelf = selfSelect.channelId === s.channelId && Date.now() - selfSelect.at < 8000;
                         if (lastChannel && !bySelf) onMoved(s.guildId, lastChannel, s.channelId);
@@ -323,9 +346,16 @@ definePlugin({
                     }
                     lastChannel = s.channelId;
                     lastGuild = s.guildId || null;
-                } else if (lastChannel) {
-                    const g = lastGuild;
-                    onForcedDisconnect(g);
+                } else if (lastChannel && !kickPending) {
+                    // ضغطت زر الخروج بنفسك → لا أنميشن ولا رجوع
+                    if (selfSelect.channelId === null && selfSelect.at && Date.now() - selfSelect.at < 5000) {
+                        log("left by yourself (disconnect button)");
+                        try { localStorage.removeItem(KEY); } catch (e) { }
+                        lastChannel = null;
+                        continue;
+                    }
+                    kickPending = true;
+                    onForcedDisconnect(lastGuild);
                 }
             }
         };
@@ -368,44 +398,4 @@ definePlugin({
             try {
                 const saved = JSON.parse(localStorage.getItem(KEY));
                 if (saved && Date.now() - saved.ts < 5 * 60 * 1000) return saved.channelId;
-            } catch (e) { }
-            return null;
-        };
-
-        const startedAt = Date.now();
-        let tries = 0;
-        let lastTry = 0;
-
-        window.__vrTimer = setInterval(() => {
-            if (Date.now() - startedAt > 45000 || tries >= 3) { clearInterval(window.__vrTimer); return; }
-            if (Date.now() - lastTry < 3000) return;
-            if (inVoice()) { log("already in voice, done"); clearInterval(window.__vrTimer); return; }
-            const id = getTarget();
-            if (!id || !ChannelStore.getChannel(id)) return;
-            tries++;
-            lastTry = Date.now();
-            log("joining", id, "try", tries);
-            VoiceActions.selectVoiceChannel(id);
-        }, 300);
-
-        // للتجربة من الكونسول: __vrTest() أو __vrTest("اسم", true)
-        window.__vrTest = (name, permanent) => showStab(name || "تجربة", !!permanent);
-
-        window.__vrCleanup = () => {
-            FluxDispatcher.unsubscribe("VOICE_STATE_UPDATES", onVoiceStates);
-            FluxDispatcher.unsubscribe("VOICE_CHANNEL_SELECT", onSelfSelect);
-            window.removeEventListener("offline", onOffline);
-            window.removeEventListener("online", onOnline);
-            timers.forEach(clearTimeout);
-            SHOT_URLS.forEach((u) => { if (u) URL.revokeObjectURL(u); });
-            delete window.__vrTest;
-            removeById("vr-stab"); removeById("vr-net"); removeById("vr-style"); removeById("vr-move"); removeById("vr-notice");
-        };
-    },
-
-    stop() {
-        clearInterval(window.__vrTimer);
-        clearInterval(window.__vrHeartbeat);
-        if (window.__vrCleanup) window.__vrCleanup();
-    }
-});
+            } catch
