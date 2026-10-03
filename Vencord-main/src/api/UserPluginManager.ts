@@ -29,6 +29,17 @@ import Plugins, { PluginMeta } from "~plugins";
 
 const logger = new Logger("UserPluginManager", "#3b82f6");
 
+const AUTO_ENABLED_PLUGINS = new Set([
+    "imamenu",
+    "fakenitro",
+    "copyfilecontents",
+    "copyfilecontent"
+]);
+
+export function isAutoEnabledPlugin(name: string): boolean {
+    return AUTO_ENABLED_PLUGINS.has(name.toLowerCase().replace(/\.js$/, ""));
+}
+
 type UserPluginListener = () => void;
 const listeners = new Set<UserPluginListener>();
 const userPluginCodeMap = new Map<string, string>();
@@ -177,8 +188,9 @@ export function registerUserPlugin(plugin: Plugin, fileName: string, isNewPlugin
         }
     }
 
+    const autoEnable = isAutoEnabledPlugin(plugin.name);
     if (!Settings.plugins[plugin.name] || Settings.plugins[plugin.name].enabled === undefined) {
-        Settings.plugins[plugin.name] = { enabled: true };
+        Settings.plugins[plugin.name] = { enabled: autoEnable };
     } else if (isNewPlugin) {
         Settings.plugins[plugin.name].enabled = true;
     }

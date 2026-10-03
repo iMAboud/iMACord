@@ -109,7 +109,21 @@
 
 ---
 
-## 6. Verification Status
+## 6. Default Plugin Enablement Whitelist
+
+### Root Causes
+- All user plugins were previously auto-enabled on registration or startup.
+- `DefaultSettings.plugins` and `isAuto` had non-essential plugins marked enabled.
+
+### Changes Made
+- Restricted auto-enabled plugins strictly to `FakeNitro`, `iMAMenu.js`, and `CopyFileContents`.
+- [`Settings.ts`](file:///d:/Playground/Apps/vencord%20extra/Vencord-main/src/api/Settings.ts): Removed `HideContextMenuItems`, `BiggerStreamPreview`, `MultiStreamPopout`, and `VoiceReconnect` from `DefaultSettings.plugins` and `isAuto`.
+- [`UserPluginManager.ts`](file:///d:/Playground/Apps/vencord%20extra/Vencord-main/src/api/UserPluginManager.ts): Added whitelist check `isAutoEnabledPlugin`. Unlisted plugins default to disabled.
+- Removed `enabledByDefault: true` from `MultiStreamPopout.js`, `multiStreamPopout`, `VoiceReconnect`, and `BiggerStreamPreview`.
+
+---
+
+## 7. Verification Status
 
 | Step | Command | Result |
 | :--- | :--- | :--- |

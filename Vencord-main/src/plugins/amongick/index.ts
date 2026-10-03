@@ -15,7 +15,6 @@ export default definePlugin({
     name: "VoiceReconnect",
     description: "يرجعك لآخر روم صوتي، ينبهك بأنميشن إذا أحد طلعك أو انقطع النت، ويسألك ترجع أو تقعد إذا أحد نقلك",
     authors: [{ name: "xFaiS", id: 0n }],
-    enabledByDefault: true,
     startAt: StartAt.WebpackReady,
 
     start() {

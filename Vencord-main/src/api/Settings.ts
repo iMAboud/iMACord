@@ -112,11 +112,7 @@ const DefaultSettings: Settings = {
     plugins: {
         FakeNitro: { enabled: true },
         iMAMenu: { enabled: true },
-        HideContextMenuItems: { enabled: true },
-        BiggerStreamPreview: { enabled: true },
-        CopyFileContents: { enabled: true },
-        MultiStreamPopout: { enabled: true },
-        VoiceReconnect: { enabled: true }
+        CopyFileContents: { enabled: true }
     },
 
     uiElements: {
@@ -190,16 +186,13 @@ export const SettingsStore = new SettingsStoreClass(settings, {
             const isAuto = [
                 "fakenitro",
                 "imamenu",
-                "hidecontextmenuitems",
-                "biggerstreampreview",
                 "copyfilecontents",
-                "multistreampopout",
-                "voicereconnect",
-                "amongick"
+                "copyfilecontent",
+                "crashhandler"
             ].includes(key.toLowerCase());
 
             return target[key] = {
-                enabled: IS_REPORTER || plugins[key].required || plugins[key].enabledByDefault || PluginMeta[key]?.userPlugin || isAuto || false
+                enabled: Boolean(IS_REPORTER || plugins[key].required || isAuto)
             };
         }
 

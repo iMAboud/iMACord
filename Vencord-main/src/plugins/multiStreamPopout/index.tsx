@@ -48,7 +48,6 @@ export default definePlugin({
     name: "MultiStreamPopout",
     description: "تفعيل فتح أكثر من بث/شير (Stream Popout) في نوافذ منفصلة بوقت واحد 📺✨",
     authors: [{ name: "MBdr", id: 0n }],
-    enabledByDefault: true,
 
     start() {
         this.handleKeyDown = this.handleKeyDown.bind(this);
