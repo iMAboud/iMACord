@@ -1,6 +1,6 @@
 {
   "repo": "iMAboud/iMACord",
-  "updatedAt": "2026-10-02T14:04:34.197Z",
+  "updatedAt": "2026-10-03T08:41:11.639Z",
   "plugins": {
     "CustomFont.js": {
       "hash": "afa9b0e316c1dad981f4fadcd767b2b250d9971eec23697e321b4b82eb472a5b",
@@ -8,13 +8,6 @@
       "author": "iiMBdr",
       "commit": "a7831b5",
       "message": "Add files via upload"
-    },
-    "DiscordDebloater.js": {
-      "hash": "fa968f06bbe4acb7a83de03d673b8f2fc3aad128dcbadf0781242876958415ae",
-      "size": 4762,
-      "author": "iMAboud",
-      "commit": "c10da4a",
-      "message": "feat: add Vencord source, standalone installers, auto-release workflow, and user plugins"
     },
     "MultiStreamPopout.js": {
       "hash": "fcc7de78b086ece3d3b8ac8b08796038788cd0cfb951c24c1b9caf9fd2c83aad",
