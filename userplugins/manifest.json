@@ -1,52 +1,34 @@
 {
-  "version": "1.0.0",
-  "updatedAt": "2026-10-02T10:26:39.688Z",
-  "dist": {
-    "renderer.js": {
-      "hash": "a036159f39b7e4ea5a6d694d196006a8f049c15b1cc853513049d3206609ae91",
-      "size": 2682070
-    },
-    "renderer.css": {
-      "hash": "20567561763c6b29c615de1a2b857b749799682e34c6233242576bb31171d8ce",
-      "size": 48994
-    },
-    "patcher.js": {
-      "hash": "94e0c848afdc22934b892df4ed953926050d40654e0a5edf6b6509d6b3f387fa",
-      "size": 44476
-    },
-    "preload.js": {
-      "hash": "6a5a7c86e583c23a5da4d14f5a7feed8aa07ea211ca145bff42027f1ec741a6f",
-      "size": 2593
-    }
-  },
+  "repo": "iMAboud/iMACord",
+  "updatedAt": "2026-10-03T08:41:11.639Z",
   "plugins": {
-    "amongick.js": {
-      "hash": "58b2cd8bb1068e0e79cdb5315670f91abb4ece49197f1b3b466c5c1731607482",
-      "size": 1838401,
-      "author": "iMAboud",
-      "commit": "6e3b468",
-      "message": "feat: iMACord UI enhancements, user plugins manager, standalone installers, and GitHub auto-release workflow"
-    },
-    "DiscordDebloater.js": {
-      "hash": "fa968f06bbe4acb7a83de03d673b8f2fc3aad128dcbadf0781242876958415ae",
-      "size": 4762,
-      "author": "iMAboud",
-      "commit": "6e3b468",
-      "message": "feat: iMACord UI enhancements, user plugins manager, standalone installers, and GitHub auto-release workflow"
-    },
-    "iMAMenu.js": {
-      "hash": "2d30028f95bf0a02bb51866e9137837feaff0f501ec1bcef773484828d64bbea",
-      "size": 184976,
-      "author": "iMAboud",
-      "commit": "6e3b468",
-      "message": "feat: iMACord UI enhancements, user plugins manager, standalone installers, and GitHub auto-release workflow"
+    "CustomFont.js": {
+      "hash": "afa9b0e316c1dad981f4fadcd767b2b250d9971eec23697e321b4b82eb472a5b",
+      "size": 4803,
+      "author": "iiMBdr",
+      "commit": "a7831b5",
+      "message": "Add files via upload"
     },
     "MultiStreamPopout.js": {
       "hash": "fcc7de78b086ece3d3b8ac8b08796038788cd0cfb951c24c1b9caf9fd2c83aad",
       "size": 2279,
       "author": "iMAboud",
-      "commit": "6e3b468",
-      "message": "feat: iMACord UI enhancements, user plugins manager, standalone installers, and GitHub auto-release workflow"
+      "commit": "2d3e40b",
+      "message": "."
+    },
+    "VoiceReconnect.js": {
+      "hash": "58b2cd8bb1068e0e79cdb5315670f91abb4ece49197f1b3b466c5c1731607482",
+      "size": 1838401,
+      "author": "iMAboud",
+      "commit": "a5e6aeb",
+      "message": "Update VoiceReconnect.js"
+    },
+    "iMAMenu.js": {
+      "hash": "2d30028f95bf0a02bb51866e9137837feaff0f501ec1bcef773484828d64bbea",
+      "size": 184976,
+      "author": "iMAboud",
+      "commit": "2d3e40b",
+      "message": "."
     }
   }
 }
