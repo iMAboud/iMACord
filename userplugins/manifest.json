@@ -1,26 +1,26 @@
 {
-  "version": "v1.0.25",
-  "updatedAt": "2026-10-03T16:45:59.499Z",
+  "version": "v1.0.26",
+  "updatedAt": "2026-10-03T19:47:55.314Z",
   "dist": {
     "renderer.js": {
-      "hash": "96f56a1bf7bc98c99ae205f11565b6de124d85dff723bcaf96390db1e69aa960",
+      "hash": "47dd481ceb370bd44620e86904a6956d31e66215659532e8f616b014cb0d7808",
       "size": 2679347,
-      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.25/renderer.js"
+      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.26/renderer.js"
     },
     "renderer.css": {
       "hash": "20567561763c6b29c615de1a2b857b749799682e34c6233242576bb31171d8ce",
       "size": 48994,
-      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.25/renderer.css"
+      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.26/renderer.css"
     },
     "patcher.js": {
-      "hash": "2d54f3412fb36a712bfc6cc22c79ae94eb831a4447bf4022f308e6a86e7714a4",
+      "hash": "ccab545fd62f6040be7f27f34ded1eaa8d639693b42045a13ec8d08d259e61b7",
       "size": 44279,
-      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.25/patcher.js"
+      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.26/patcher.js"
     },
     "preload.js": {
-      "hash": "28b0812afedea9629e0034c797f669ccca17445392204d3f4c245a9fe8175406",
+      "hash": "aefb0b02d1137d947775fa175d7b161e428650c688beae879c7bbe8ed9c7b292",
       "size": 2593,
-      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.25/preload.js"
+      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.26/preload.js"
     }
   },
   "plugins": {
@@ -30,7 +30,7 @@
       "author": "iiMBdr",
       "commit": "a7831b5",
       "message": "Add files via upload",
-      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.25/CustomFont.js"
+      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.26/CustomFont.js"
     },
     "iMAMenu.js": {
       "hash": "f6bb19a9085b0b41c091e0dbdc478c8e408063694d64b216089bf6393c836020",
@@ -38,7 +38,15 @@
       "author": "iMAboud",
       "commit": "3dba2f5",
       "message": "feat: add iMAboud author profile support and updater cache-busting",
-      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.25/iMAMenu.js"
+      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.26/iMAMenu.js"
+    },
+    "MBdm.js": {
+      "hash": "357b59ee989fc786b98ef7150cf68258ce3346ce160a89f3de763642d71a8995",
+      "size": 123816,
+      "author": "iiMBdr",
+      "commit": "c055d52",
+      "message": "Add files via upload",
+      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.26/MBdm.js"
     },
     "MultiStreamPopout.js": {
       "hash": "478e0dfe5f829954d1f75f6ebd441c8d2a94a9e1c99050bcba9132be2f698df6",
@@ -46,7 +54,7 @@
       "author": "iMAboud",
       "commit": "36c767f",
       "message": "feat: restrict default plugin auto-enablement to whitelist",
-      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.25/MultiStreamPopout.js"
+      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.26/MultiStreamPopout.js"
     },
     "SettingsPopout.js": {
       "hash": "f882eaf803d613e0f7318fc840dfd9d53442a56fbb194876159f00096d18ffec",
@@ -54,7 +62,7 @@
       "author": "iMAboud",
       "commit": "908f17c",
       "message": "Add files via upload",
-      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.25/SettingsPopout.js"
+      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.26/SettingsPopout.js"
     },
     "VoiceReconnect.js": {
       "hash": "cb0d4f400c29e9ce1295f260c6b185a7c01c3a673142bb5ada1544d35fc53b26",
@@ -62,7 +70,7 @@
       "author": "F2isalq",
       "commit": "222cac7",
       "message": "Update VoiceReconnect.js",
-      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.25/VoiceReconnect.js"
+      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.26/VoiceReconnect.js"
     }
   },
   "removedPlugins": [
