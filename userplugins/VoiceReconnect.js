@@ -410,14 +410,21 @@ definePlugin({
         // سجل الطرد في الديسكورد ما يحفظ مين انطرد، بس عدّاد. فلو أحد ثاني انطرد ثم طلعت أنت بنفسك
         // كان البلوقن يحسبها عليك. الحل: نحدّث اللقطة كل ما أحد ثاني يطلع/ينتقل في نفس السيرفر
         // السجل أحياناً يتأخر كم ثانية، فنحدّث مرتين: بعد 3 ثواني وبعد 9
+        // قبل: أي تغيير من أي عضو (ميوت، فتح كام، بث...) كان يطلب سجل التدقيق من الديسكورد،
+        // وفي السيرفرات النشطة هذا يصير عشرات الطلبات بالدقيقة ويوصل لحد الطلبات (429) ويثقّل الديسكورد.
+        // الحين نطلب السجل بس إذا عضو فعلاً طلع من روم أو انتقل، ومرة كل 20 ثانية كحد أقصى
         let snapTimer = null;
+        let lastSnapAt = 0;
+        const othersChannel = new Map(); // userId -> channelId (في نفس السيرفر)
         const refreshSnapSoon = (guildId) => {
             if (snapTimer) return;
+            const wait = Math.max(4000, 20000 - (Date.now() - lastSnapAt));
             snapTimer = later(() => {
                 snapTimer = null;
+                if (lastGuild !== guildId || !inVoice()) return;
+                lastSnapAt = Date.now();
                 takeSnapshot(guildId);
-                later(() => { if (lastGuild === guildId) takeSnapshot(guildId); }, 6000);
-            }, 3000);
+            }, wait);
         };
 
         const onVoiceStates = ({ voiceStates }) => {
@@ -426,7 +433,11 @@ definePlugin({
             if (!m || !voiceStates) return;
             for (const s of voiceStates) {
                 if (s.userId !== m.id) {
-                    if (lastGuild && s.guildId === lastGuild && inVoice()) refreshSnapSoon(lastGuild);
+                    if (!lastGuild || s.guildId !== lastGuild) continue;
+                    const prev = othersChannel.get(s.userId);
+                    if (s.channelId) othersChannel.set(s.userId, s.channelId); else othersChannel.delete(s.userId);
+                    // نتجاهل الميوت/الكام/البث — بس الخروج أو الانتقال
+                    if ((!s.channelId || (prev && prev !== s.channelId)) && inVoice()) refreshSnapSoon(lastGuild);
                     continue;
                 }
                 if (s.channelId) {
@@ -474,7 +485,7 @@ definePlugin({
         window.__vrHeartbeat = setInterval(() => {
             const id = SelectedChannelStore.getVoiceChannelId();
             // تحديث دوري للسجل كل 30 ثانية وأنت في روم، عشان ما يبقى قديم
-            if (id && lastGuild && ++beat % 6 === 0) takeSnapshot(lastGuild);
+            if (id && lastGuild && ++beat % 24 === 0) { lastSnapAt = Date.now(); takeSnapshot(lastGuild); } // كل دقيقتين
             if (id) {
                 lastChannel = id;
                 sSet(KEY, JSON.stringify({ channelId: id, ts: Date.now() }));
