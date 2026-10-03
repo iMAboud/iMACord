@@ -11,13 +11,71 @@ definePlugin({
         const KEY = "VoiceReconnect_last";
         const log = (...a) => console.log("[VoiceReconnect]", ...a);
 
+        // ===================== التخزين =====================
+        // الديسكورد يحذف window.localStorage عشان كذا كان الحفظ يفشل بصمت وما يرجعك بعد التحديث.
+        // نستخدم DataStore حق Vencord، وإذا مو موجود نجيب localStorage من iframe مخفي
+        const DS = (Vencord.Api && Vencord.Api.DataStore) || null;
+        let LS = null;
+        if (!DS) {
+            try { LS = window.localStorage || null; } catch (e) { }
+            if (!LS) {
+                try {
+                    const f = document.createElement("iframe");
+                    f.style.display = "none"; f.id = "vr-ls";
+                    document.body.appendChild(f);
+                    LS = f.contentWindow.localStorage;
+                } catch (e) { log("no storage available", e && e.message); }
+            }
+        }
+        const mem = {};
+        const sGet = (k) => (k in mem ? mem[k] : null);
+        const sSet = (k, v) => {
+            mem[k] = v;
+            if (DS) DS.set(k, v).catch((e) => log("save failed", e && e.message));
+            else if (LS) try { LS.setItem(k, v); } catch (e) { }
+        };
+        const sDel = (k) => {
+            delete mem[k];
+            if (DS) DS.del(k).catch(() => { });
+            else if (LS) try { LS.removeItem(k); } catch (e) { }
+        };
+        const loadKeys = async (keys) => {
+            for (const k of keys) {
+                try {
+                    const v = DS ? await DS.get(k) : (LS ? LS.getItem(k) : null);
+                    if (v !== undefined && v !== null && !(k in mem)) mem[k] = v;
+                } catch (e) { }
+            }
+            log("storage loaded", DS ? "(DataStore)" : LS ? "(localStorage)" : "(none)", JSON.stringify(mem));
+        };
+
         log("started", !!VoiceActions, !!VoiceStateStore, !!SelectedChannelStore, !!ChannelStore, !!UserStore, !!FluxDispatcher, !!RestAPI);
 
         let lastChannel = null;
         let lastGuild = null;
         let needNetRejoin = false;
         const timers = new Set();
-        const later = (fn, ms) => { const t = setTimeout(() => { timers.delete(t); fn(); }, ms); timers.add(t); return t; };
+        const later = (fn, ms) => {
+            if (shuttingDown) return null;
+            const t = setTimeout(() => { timers.delete(t); if (!shuttingDown) fn(); }, ms);
+            timers.add(t); return t;
+        };
+
+        // ===================== حماية الإغلاق =====================
+        // لما الديسكورد يتسكّر أو يسوي ريستارت، هو يطلّعك من الروم. بدون هذي الحماية كان البلوقن
+        // ممكن يحسبها طردة ويحاول يرجعك للروم وهو يتسكّر، فيعلّق محرك الصوت والنسخة القديمة تبقى في الخلفية.
+        // الحين أول ما يبدأ الإغلاق نوقف كل شي ولا نلمس الروم الصوتي أبداً
+        let shuttingDown = false;
+        const onUnload = () => {
+            if (shuttingDown) return;
+            shuttingDown = true;
+            timers.forEach(clearTimeout); timers.clear();
+            clearInterval(window.__vrTimer);
+            clearInterval(window.__vrHeartbeat);
+            log("shutting down, all rejoin logic stopped");
+        };
+        window.addEventListener("beforeunload", onUnload);
+        window.addEventListener("pagehide", onUnload);
 
         // ===================== واجهة الأنميشن =====================
         const style = document.createElement("style");
@@ -60,7 +118,7 @@ definePlugin({
         @keyframes vr-blink{0%{opacity:1}50%{opacity:.12}}`;
         document.head.appendChild(style);
 
-        const VOLUME = 0.3;
+        const VOLUME = 0.7;
 
         const removeById = (id) => { const e = document.getElementById(id); if (e) e.remove(); };
 
@@ -153,6 +211,7 @@ definePlugin({
 
         let rejoinToken = 0;
         const rejoin = (id, tries, token) => {
+            if (shuttingDown) return;
             if (token === undefined) token = ++rejoinToken; // محاولة جديدة تلغي القديمة
             if (token !== rejoinToken) return;
             if (tries <= 0 || inVoice()) { if (inVoice()) { needNetRejoin = false; hideNet(); } return; }
@@ -234,7 +293,7 @@ definePlugin({
         // إذا الديسكورد تسكّر فعلاً ما يلحق يمسح، وإذا طلعت وأنت فاتح يمسح عادي
         const forgetSoon = () => later(() => {
             if (inVoice()) return;
-            try { localStorage.removeItem(KEY); } catch (e) { }
+            sDel(KEY);
             log("saved channel cleared (you left)");
         }, 5000);
 
@@ -269,8 +328,8 @@ definePlugin({
                         rejoinToken++; // نلغي أي محاولة رجوع شغالة
                         lastChannel = null;
                         try {
-                            localStorage.removeItem(KEY);
-                            localStorage.setItem(BLOCK_KEY, String(now + 10 * 60 * 1000));
+                            sDel(KEY);
+                            sSet(BLOCK_KEY, String(now + 10 * 60 * 1000));
                         } catch (e) { }
                         kickPending = false;
                         showStab(name, true);
@@ -362,6 +421,7 @@ definePlugin({
         };
 
         const onVoiceStates = ({ voiceStates }) => {
+            if (shuttingDown) return;
             const m = me();
             if (!m || !voiceStates) return;
             for (const s of voiceStates) {
@@ -402,6 +462,7 @@ definePlugin({
             }
         };
         const onOnline = () => {
+            if (shuttingDown) return;
             if (!needNetRejoin) return hideNet();
             later(() => rejoin(lastChannel, 8), 1500);
         };
@@ -416,13 +477,13 @@ definePlugin({
             if (id && lastGuild && ++beat % 6 === 0) takeSnapshot(lastGuild);
             if (id) {
                 lastChannel = id;
-                try { localStorage.setItem(KEY, JSON.stringify({ channelId: id, ts: Date.now() })); } catch (e) { }
+                sSet(KEY, JSON.stringify({ channelId: id, ts: Date.now() }));
             }
         }, 5000);
 
         const getTarget = () => {
             try {
-                const until = Number(localStorage.getItem(BLOCK_KEY));
+                const until = Number(sGet(BLOCK_KEY));
                 if (until && Date.now() < until) return null;
             } catch (e) { }
             try {
@@ -431,19 +492,26 @@ definePlugin({
                 if (vs && vs.channelId) return vs.channelId;
             } catch (e) { }
             try {
-                const saved = JSON.parse(localStorage.getItem(KEY));
+                const saved = JSON.parse(sGet(KEY));
                 if (saved && Date.now() - saved.ts < REJOIN_WINDOW_MIN * 60 * 1000) return saved.channelId;
             } catch (e) { }
             return null;
         };
+
+        // نحمّل الروم المحفوظ أول، وبعدين نحاول نرجعك لين تدخل (لمدة 90 ثانية، كل 4 ثواني)
+        // لأن الديسكورد بعد التحديث ياخذ وقت لين يتصل، والمحاولات الأولى كانت تروح على الفاضي
+        let storageReady = false;
+        loadKeys([KEY, BLOCK_KEY]).then(() => { storageReady = true; });
 
         const startedAt = Date.now();
         let tries = 0;
         let lastTry = 0;
 
         window.__vrTimer = setInterval(() => {
-            if (Date.now() - startedAt > 45000 || tries >= 3) { clearInterval(window.__vrTimer); return; }
-            if (Date.now() - lastTry < 3000) return;
+            if (shuttingDown) return clearInterval(window.__vrTimer);
+            if (Date.now() - startedAt > 90000 || tries >= 15) { log("startup rejoin gave up"); clearInterval(window.__vrTimer); return; }
+            if (!storageReady || !me()) return;
+            if (Date.now() - lastTry < 4000) return;
             if (inVoice()) { log("already in voice, done"); clearInterval(window.__vrTimer); return; }
             const id = getTarget();
             if (!id || !ChannelStore.getChannel(id)) return;
@@ -454,7 +522,7 @@ definePlugin({
         }, 300);
 
         // لو انقفل عليك الطرد النهائي وتبي تفكه: __vrUnblock()
-        window.__vrUnblock = () => { try { localStorage.removeItem(BLOCK_KEY); } catch (e) { } kickTimes = []; log("unblocked"); };
+        window.__vrUnblock = () => { sDel(BLOCK_KEY); kickTimes = []; log("unblocked"); };
 
         // للتجربة من الكونسول: __vrTest() أو __vrTest("اسم", true)
         window.__vrTest = (name, permanent) => showStab(name || "تجربة", !!permanent);
@@ -465,10 +533,12 @@ definePlugin({
             for (const [fn, orig] of patched) { try { VoiceActions[fn] = orig; } catch (e) { } }
             window.removeEventListener("offline", onOffline);
             window.removeEventListener("online", onOnline);
+            window.removeEventListener("beforeunload", onUnload);
+            window.removeEventListener("pagehide", onUnload);
             timers.forEach(clearTimeout);
             SHOT_URLS.forEach((u) => { if (u) URL.revokeObjectURL(u); });
             delete window.__vrTest; delete window.__vrUnblock;
-            removeById("vr-stab"); removeById("vr-net"); removeById("vr-style"); removeById("vr-move"); removeById("vr-notice");
+            removeById("vr-stab"); removeById("vr-net"); removeById("vr-style"); removeById("vr-move"); removeById("vr-notice"); removeById("vr-ls");
         };
     },
 
