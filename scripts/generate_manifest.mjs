@@ -23,49 +23,53 @@ try {
     }
 } catch {}
 
-if (!prevManifest) {
-    const localManifestPath = join(userpluginsDir, "manifest.json");
-    if (existsSync(localManifestPath)) {
-        try {
-            prevManifest = JSON.parse(readFileSync(localManifestPath, "utf8"));
-        } catch {}
-    }
+let localManifest = null;
+const localManifestPath = join(userpluginsDir, "manifest.json");
+if (existsSync(localManifestPath)) {
+    try {
+        localManifest = JSON.parse(readFileSync(localManifestPath, "utf8"));
+    } catch {}
 }
+prevManifest ??= localManifest;
+
+const tag = process.env.TAG_NAME;
+const assetUrl = file => tag ? `https://github.com/${repo}/releases/download/${tag}/${encodeURIComponent(file)}` : undefined;
 
 const manifest = {
-    version: process.env.GITHUB_REF_NAME ?? "1.0.0",
+    version: tag ?? process.env.GITHUB_REF_NAME ?? "1.0.0",
     updatedAt: new Date().toISOString(),
     dist: {},
-    plugins: {}
+    plugins: {},
+    removedPlugins: []
 };
 
+// All assets ship in every release: clients on any older version resolve files via releases/latest
 const releaseFiles = [
     "iMCord.exe",
     "iMCordCLI.exe",
-    "iMCord.ico",
-    "userplugins/manifest.json"
+    "iMCord.ico"
 ];
 
 // 1. Process Core Vencord dist files
 const distFiles = ["renderer.js", "renderer.css", "patcher.js", "preload.js"];
 for (const file of distFiles) {
     const fullPath = join(distDir, file);
-    if (existsSync(fullPath)) {
-        const buf = readFileSync(fullPath);
-        const hash = sha256(buf);
-        manifest.dist[file] = {
-            hash,
-            size: buf.length
-        };
-
-        const prevHash = prevManifest?.dist?.[file]?.hash;
-        if (!prevHash || prevHash.toLowerCase() !== hash.toLowerCase()) {
-            releaseFiles.push(`Vencord-main/dist/${file}`);
-            console.log(`[Changed] Core file: ${file}`);
-        } else {
-            console.log(`[Unchanged] Core file: ${file}`);
-        }
+    if (!existsSync(fullPath)) {
+        console.error(`[ERROR] Missing core file: ${file}`);
+        process.exit(1);
     }
+    const buf = readFileSync(fullPath);
+    const hash = sha256(buf);
+    const url = assetUrl(file);
+    manifest.dist[file] = {
+        hash,
+        size: buf.length,
+        ...(url ? { url } : {})
+    };
+    releaseFiles.push(`Vencord-main/dist/${file}`);
+
+    const prevHash = prevManifest?.dist?.[file]?.hash;
+    console.log(`[${prevHash?.toLowerCase() === hash ? "Unchanged" : "Changed"}] Core file: ${file}`);
 }
 
 // 2. Process User Plugins
@@ -89,23 +93,34 @@ if (existsSync(userpluginsDir)) {
             }
         } catch {}
 
+        const url = assetUrl(file);
         manifest.plugins[file] = {
             hash,
             size: buf.length,
             author,
             ...(commit ? { commit } : {}),
-            ...(message ? { message } : {})
+            ...(message ? { message } : {}),
+            ...(url ? { url } : {})
         };
+        releaseFiles.push(`userplugins/${file}`);
 
         const prevHash = prevManifest?.plugins?.[file]?.hash;
-        if (!prevHash || prevHash.toLowerCase() !== hash.toLowerCase()) {
-            releaseFiles.push(`userplugins/${file}`);
-            console.log(`[Changed] Plugin: ${file}`);
-        } else {
-            console.log(`[Unchanged] Plugin: ${file}`);
-        }
+        console.log(`[${prevHash?.toLowerCase() === hash ? "Unchanged" : "Changed"}] Plugin: ${file}`);
     }
 }
+
+// 3. Track removed plugins cumulatively so clients delete them
+const removed = new Set([
+    "DiscordDebloater.js",
+    ...(prevManifest?.removedPlugins ?? []),
+    ...(localManifest?.removedPlugins ?? []),
+    ...Object.keys(prevManifest?.plugins ?? {})
+]);
+manifest.removedPlugins = [...removed].filter(f => !manifest.plugins[f]).sort();
+for (const f of manifest.removedPlugins) console.log(`[Removed] Plugin: ${f}`);
+
+// Manifest last so it is uploaded after the files it references
+releaseFiles.push("userplugins/manifest.json");
 
 const json = JSON.stringify(manifest, null, 2);
 writeFileSync(join(userpluginsDir, "manifest.json"), json, "utf8");

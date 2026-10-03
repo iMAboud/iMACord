@@ -80,7 +80,7 @@ export function Updatable(props: CommonProps) {
                 <>
                     <Forms.FormText>Failed to check updates. Check the console for more info</Forms.FormText>
                     <ErrorCard style={{ padding: "1em" }}>
-                        <p>{updateError.stderr || updateError.stdout || "An unknown error occurred"}</p>
+                        <p>{updateError.message || updateError.stderr || updateError.stdout || "An unknown error occurred"}</p>
                     </ErrorCard>
                 </>
             ) : (

@@ -206,7 +206,7 @@ function PluginSettings() {
         [pluginCount, settings.plugins]
     );
 
-    const hasUserPlugins = !IS_STANDALONE && Object.values(PluginMeta).some(m => m.userPlugin);
+    const hasUserPlugins = Object.values(PluginMeta).some(m => m.userPlugin);
 
     const [searchValue, setSearchValue] = useState({ value: "", tags: [] as PluginTag[], status: SearchStatus.ALL });
 

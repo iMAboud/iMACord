@@ -1,4 +1,15 @@
 import definePlugin, { StartAt } from "@utils/types";
+import { findByProps, findStore } from "@webpack";
+import { ChannelStore, FluxDispatcher, RestAPI, SelectedChannelStore, UserStore, UserUtils } from "@webpack/common";
+
+declare global {
+    interface Window {
+        __vrTimer?: ReturnType<typeof setInterval>;
+        __vrHeartbeat?: ReturnType<typeof setInterval>;
+        __vrCleanup?: () => void;
+        __vrTest?: (name?: string, permanent?: boolean) => void;
+    }
+}
 
 export default definePlugin({
     name: "VoiceReconnect",
@@ -8,21 +19,18 @@ export default definePlugin({
     startAt: StartAt.WebpackReady,
 
     start() {
-        const W = window.Vencord?.Webpack || (typeof Vencord !== "undefined" ? Vencord.Webpack : null);
-        if (!W || !W.Common) return;
-        const { ChannelStore, SelectedChannelStore, UserStore, FluxDispatcher, RestAPI } = W.Common;
-        const VoiceActions = W.findByProps("selectVoiceChannel");
-        const VoiceStateStore = W.findStore("VoiceStateStore");
+        const VoiceActions = findByProps("selectVoiceChannel");
+        const VoiceStateStore = findStore("VoiceStateStore");
         const KEY = "VoiceReconnect_last";
         const log = (...a) => console.log("[VoiceReconnect]", ...a);
 
         log("started", !!VoiceActions, !!VoiceStateStore, !!SelectedChannelStore, !!ChannelStore, !!UserStore, !!FluxDispatcher, !!RestAPI);
 
-        let lastChannel = null;
-        let lastGuild = null;
+        let lastChannel: string | null = null;
+        let lastGuild: string | null = null;
         let needNetRejoin = false;
-        const timers = new Set();
-        const later = (fn, ms) => { const t = setTimeout(() => { timers.delete(t); fn(); }, ms); timers.add(t); return t; };
+        const timers = new Set<ReturnType<typeof setTimeout>>();
+        const later = (fn: () => void, ms: number) => { const t = setTimeout(() => { timers.delete(t); fn(); }, ms); timers.add(t); return t; };
 
         // ===================== واجهة الأنميشن =====================
         const style = document.createElement("style");
@@ -67,12 +75,14 @@ export default definePlugin({
 
         const VOLUME = 0.7;
 
-        const removeById = (id) => { const e = document.getElementById(id); if (e) e.remove(); };
+        const removeById = (id: string) => { const e = document.getElementById(id); if (e) e.remove(); };
 
         // صوت احتياطي (يشتغل بس إذا صوت اللقطة انمنع)
         const playSound = () => {
             try {
-                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                const AudioCtx = window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+                if (!AudioCtx) return;
+                const ctx = new AudioCtx();
                 const t0 = ctx.currentTime;
                 const g = ctx.createGain();
                 g.connect(ctx.destination);
@@ -84,7 +94,7 @@ export default definePlugin({
                 o.frequency.exponentialRampToValueAtTime(40, t0 + 0.6);
                 o.connect(g); o.start(t0); o.stop(t0 + 0.9);
                 setTimeout(() => ctx.close(), 1500);
-            } catch (e) { log("sound failed", e && e.message); }
+            } catch (e) { log("sound failed", e instanceof Error ? e.message : String(e)); }
         };
 
         // ===================== لقطات الطرد (فيديو شفاف WebM مدمج) =====================
@@ -100,11 +110,11 @@ export default definePlugin({
                 const bytes = new Uint8Array(bin.length);
                 for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
                 return URL.createObjectURL(new Blob([bytes], { type: "video/webm" }));
-            } catch (e) { log("shot decode failed", e && e.message); return null; }
+            } catch (e) { log("shot decode failed", e instanceof Error ? e.message : String(e)); return null; }
         });
         let lastShot = -1;
 
-        const showStab = (killerName, permanent) => {
+        const showStab = (killerName: string, permanent: boolean = false) => {
             removeById("vr-stab");
 
             // لقطة عشوائية من الأربع، وما تتكرر نفس اللي قبلها
@@ -117,15 +127,19 @@ export default definePlugin({
             d.id = "vr-stab";
             d.innerHTML = `<video playsinline preload="auto"></video>
                 <div class="bottom"><span class="who"></span><span class="what"></span></div>`;
-            d.querySelector(".bottom .who").textContent = killerName;
-            d.querySelector(".bottom .what").textContent = permanent ? "طردك نهائياً من الغرفة!" : "طردك من الغرفة!";
+            const who = d.querySelector<HTMLElement>(".bottom .who");
+            if (who) who.textContent = killerName;
+            const what = d.querySelector<HTMLElement>(".bottom .what");
+            if (what) what.textContent = permanent ? "طردك نهائياً من الغرفة!" : "طردك من الغرفة!";
 
-            const v = d.querySelector("video");
+            const v = d.querySelector<HTMLVideoElement>("video");
+            if (!v) return;
             const done = () => removeById("vr-stab");
             v.volume = VOLUME;
             v.onended = () => later(done, 300);
             v.onerror = () => { log("shot failed to load", i + 1); playSound(); };
-            if (SHOT_URLS[i]) v.src = SHOT_URLS[i];
+            const shotUrl = SHOT_URLS[i];
+            if (shotUrl) v.src = shotUrl;
             document.body.appendChild(d);
 
             v.play().catch(() => {
@@ -157,7 +171,7 @@ export default definePlugin({
         const inVoice = () => !!SelectedChannelStore.getVoiceChannelId();
 
         let rejoinToken = 0;
-        const rejoin = (id, tries, token) => {
+        const rejoin = (id: string | null, tries: number, token?: number) => {
             if (token === undefined) token = ++rejoinToken; // محاولة جديدة تلغي القديمة
             if (token !== rejoinToken) return;
             if (tries <= 0 || inVoice()) { if (inVoice()) { needNetRejoin = false; hideNet(); } return; }
@@ -168,35 +182,40 @@ export default definePlugin({
             later(() => rejoin(id, tries - 1, token), 3000);
         };
 
-        const snowflakeTime = (id) => Number(BigInt(id) >> BigInt(22)) + 1420070400000;
+        const snowflakeTime = (id: string) => Number(BigInt(id) >> BigInt(22)) + 1420070400000;
 
         // الديسكورد يدمج الطرد المتكرر من نفس الشخص في سجل واحد (يزيد العدّاد فقط)،
         // فنحفظ لقطة للسجل ونقارن العدّاد بدل الاعتماد على الوقت
         const AUDIT_DISCONNECT = 27;
         const AUDIT_MOVE = 26;
-        const auditSnap = new Map(); // "guildId:type" -> Map(entryId -> count)
+        interface AuditEntry {
+            id: string;
+            user_id?: string;
+            options?: { count?: number | string };
+        }
+        const auditSnap = new Map<string, Map<string, number>>(); // "guildId:type" -> Map(entryId -> count)
 
-        const fetchAudit = async (guildId, type) => {
+        const fetchAudit = async (guildId: string, type: number): Promise<AuditEntry[]> => {
             const res = await RestAPI.get({ url: `/guilds/${guildId}/audit-logs`, query: { action_type: type, limit: 10 } });
             return (res && res.body && res.body.audit_log_entries) || [];
         };
-        const countOf = (e) => Number(e.options && e.options.count) || 1;
+        const countOf = (e: AuditEntry) => Number(e.options && e.options.count) || 1;
 
-        const takeSnapshot = async (guildId) => {
+        const takeSnapshot = async (guildId: string) => {
             for (const type of [AUDIT_DISCONNECT, AUDIT_MOVE]) {
                 try {
-                    const m = new Map();
+                    const m = new Map<string, number>();
                     for (const e of await fetchAudit(guildId, type)) m.set(e.id, countOf(e));
                     auditSnap.set(guildId + ":" + type, m);
-                } catch (err) { log("snapshot failed", err && err.message); }
+                } catch (err) { log("snapshot failed", err instanceof Error ? err.message : String(err)); }
             }
         };
 
-        const findActor = async (guildId, type, since) => {
+        const findActor = async (guildId: string, type: number, since: number) => {
             try {
                 const entries = await fetchAudit(guildId, type);
                 const snap = auditSnap.get(guildId + ":" + type);
-                let found = null;
+                let found: string | undefined = undefined;
                 for (const e of entries) {
                     const prev = snap ? snap.get(e.id) : undefined;
                     const isNew = snap
@@ -205,16 +224,16 @@ export default definePlugin({
                     if (isNew && !found) found = e.user_id;
                 }
                 if (found) {
-                    const m = new Map();
+                    const m = new Map<string, number>();
                     for (const e of entries) m.set(e.id, countOf(e));
                     auditSnap.set(guildId + ":" + type, m);
                 }
-                return found;
-            } catch (err) { log("audit log failed", err && err.message); }
+                return found || null;
+            } catch (err) { log("audit log failed", err instanceof Error ? err.message : String(err)); }
             return null;
         };
 
-        const showNotice = (text, ms) => {
+        const showNotice = (text: string, ms?: number) => {
             removeById("vr-notice");
             const n = document.createElement("div");
             n.id = "vr-notice";
@@ -223,27 +242,27 @@ export default definePlugin({
             later(() => removeById("vr-notice"), ms || 8000);
         };
 
-        const channelName = (id) => {
+        const channelName = (id: string | null) => {
             const c = id && ChannelStore.getChannel(id);
             return c && c.name ? c.name : "الروم";
         };
 
-        const nameOf = async (id) => {
+        const nameOf = async (id: string) => {
             let u = UserStore.getUser(id);
-            if (!u) { try { u = await W.Common.UserUtils.getUser(id); } catch (e) { } }
+            if (!u) { try { u = await UserUtils.getUser(id); } catch (e) { } }
             return u ? (u.globalName || u.username) : "شخص";
         };
 
         // طرد نهائي: إذا انطردت مرتين خلال دقيقة، البلوقن ما يرجعك (ولا حتى بعد إعادة التشغيل لمدة 10 دقايق)
         const PERMA_WINDOW = 60 * 1000;
         const BLOCK_KEY = "VoiceReconnect_block";
-        let kickTimes = [];
+        let kickTimes: number[] = [];
 
-        const onForcedDisconnect = (guildId) => {
+        const onForcedDisconnect = (guildId: string | null) => {
             const since = Date.now();
             if (navigator.onLine === false) { showNet(); needNetRejoin = true; return; }
             if (!guildId) return;
-            const check = (attempt) => later(async () => {
+            const check = (attempt: number) => later(async () => {
                 const uid = await findActor(guildId, AUDIT_DISCONNECT, since);
                 if (uid && uid !== me().id) {
                     log("disconnected by", uid);
@@ -276,7 +295,7 @@ export default definePlugin({
             check(0);
         };
 
-        const showMovePrompt = (moverName, fromId, toId) => {
+        const showMovePrompt = (moverName: string, fromId: string, toId: string) => {
             removeById("vr-move");
             const d = document.createElement("div");
             d.id = "vr-move";
@@ -284,22 +303,30 @@ export default definePlugin({
                 <div class="s"></div>
                 <div class="btns"><button class="back"></button><button class="stay">اقعد هنا</button></div>
                 <div class="bar"></div>`;
-            d.querySelector(".t b").textContent = moverName;
-            d.querySelector(".s").textContent = "من " + channelName(fromId) + " ← إلى " + channelName(toId);
-            d.querySelector(".back").textContent = "ارجع لـ " + channelName(fromId);
-            d.querySelector(".back").onclick = () => {
-                removeById("vr-move");
-                if (ChannelStore.getChannel(fromId)) VoiceActions.selectVoiceChannel(fromId);
-            };
-            d.querySelector(".stay").onclick = () => removeById("vr-move");
+            const tb = d.querySelector(".t b");
+            if (tb) tb.textContent = moverName;
+            const s = d.querySelector(".s");
+            if (s) s.textContent = "من " + channelName(fromId) + " ← إلى " + channelName(toId);
+            const backBtn = d.querySelector<HTMLButtonElement>(".back");
+            if (backBtn) {
+                backBtn.textContent = "ارجع لـ " + channelName(fromId);
+                backBtn.onclick = () => {
+                    removeById("vr-move");
+                    if (ChannelStore.getChannel(fromId)) VoiceActions.selectVoiceChannel(fromId);
+                };
+            }
+            const stayBtn = d.querySelector<HTMLButtonElement>(".stay");
+            if (stayBtn) {
+                stayBtn.onclick = () => removeById("vr-move");
+            }
             document.body.appendChild(d);
             later(() => removeById("vr-move"), 20000);
         };
 
-        const onMoved = (guildId, fromId, toId) => {
+        const onMoved = (guildId: string | null, fromId: string, toId: string) => {
             const since = Date.now();
             log("moved", fromId, "->", toId);
-            const check = (attempt) => later(async () => {
+            const check = (attempt: number) => later(async () => {
                 const uid = guildId ? await findActor(guildId, AUDIT_MOVE, since) : null;
                 if (uid && uid !== me().id) {
                     showMovePrompt(await nameOf(uid), fromId, toId);
@@ -310,12 +337,17 @@ export default definePlugin({
         };
 
         // نعرف إذا أنت اللي غيّرت الروم بنفسك
-        let selfSelect = { channelId: null, at: 0 };
-        const onSelfSelect = ({ channelId }) => { selfSelect = { channelId, at: Date.now() }; };
+        let selfSelect: { channelId: string | null; at: number } = { channelId: null, at: 0 };
+        const onSelfSelect = ({ channelId }: { channelId: string | null }) => { selfSelect = { channelId, at: Date.now() }; };
         FluxDispatcher.subscribe("VOICE_CHANNEL_SELECT", onSelfSelect);
 
         // ===================== أحداث الفلكس =====================
-        const onVoiceStates = ({ voiceStates }) => {
+        interface VoiceStateUpdate {
+            userId: string;
+            channelId?: string;
+            guildId?: string;
+        }
+        const onVoiceStates = ({ voiceStates }: { voiceStates?: VoiceStateUpdate[] }) => {
             const m = me();
             if (!m || !voiceStates) return;
             for (const s of voiceStates) {
@@ -323,7 +355,7 @@ export default definePlugin({
                 if (s.channelId) {
                     if (s.channelId !== lastChannel) {
                         const bySelf = selfSelect.channelId === s.channelId && Date.now() - selfSelect.at < 8000;
-                        if (lastChannel && !bySelf) onMoved(s.guildId, lastChannel, s.channelId);
+                        if (lastChannel && !bySelf) onMoved(s.guildId || null, lastChannel, s.channelId);
                         else if (s.guildId) takeSnapshot(s.guildId);
                     }
                     lastChannel = s.channelId;
@@ -339,7 +371,7 @@ export default definePlugin({
         // ===================== النت =====================
         const onOffline = () => {
             if (lastChannel || inVoice()) {
-                if (!lastChannel) lastChannel = SelectedChannelStore.getVoiceChannelId();
+                if (!lastChannel) lastChannel = SelectedChannelStore.getVoiceChannelId() ?? null;
                 needNetRejoin = true;
                 showNet();
             }
@@ -368,11 +400,12 @@ export default definePlugin({
             try {
                 const m = me();
                 const vs = m && VoiceStateStore.getVoiceStateForUser(m.id);
-                if (vs && vs.channelId) return vs.channelId;
+                if (vs && vs.channelId) return vs.channelId as string;
             } catch (e) { }
             try {
-                const saved = JSON.parse(localStorage.getItem(KEY));
-                if (saved && Date.now() - saved.ts < 5 * 60 * 1000) return saved.channelId;
+                const raw = localStorage.getItem(KEY);
+                const saved = raw ? JSON.parse(raw) as { channelId?: string; ts?: number } : null;
+                if (saved && saved.ts && saved.channelId && Date.now() - saved.ts < 5 * 60 * 1000) return saved.channelId;
             } catch (e) { }
             return null;
         };
@@ -401,7 +434,7 @@ export default definePlugin({
             FluxDispatcher.unsubscribe("VOICE_CHANNEL_SELECT", onSelfSelect);
             window.removeEventListener("offline", onOffline);
             window.removeEventListener("online", onOnline);
-            timers.forEach(clearTimeout);
+            for (const t of timers) clearTimeout(t);
             SHOT_URLS.forEach((u) => { if (u) URL.revokeObjectURL(u); });
             delete window.__vrTest;
             removeById("vr-stab"); removeById("vr-net"); removeById("vr-style"); removeById("vr-move"); removeById("vr-notice");

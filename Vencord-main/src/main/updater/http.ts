@@ -21,24 +21,30 @@ import { fetchBuffer, fetchJson } from "@main/utils/http";
 import { IpcEvents } from "@shared/IpcEvents";
 import { VENCORD_USER_AGENT } from "@shared/vencordUserAgent";
 import { createHash } from "crypto";
-import { app, ipcMain } from "electron";
+import { ipcMain } from "electron";
 import { existsSync } from "fs";
-import { mkdir, readFile, writeFile } from "fs/promises";
-import { join } from "path";
+import { mkdir, readFile, rename, rm, writeFile } from "fs/promises";
+import { basename, join } from "path";
 
 import { serializeErrors, VENCORD_FILES } from "./common";
 
 const IMACORD_REPO = "iMAboud/iMACord";
 const RAW_BASE = `https://raw.githubusercontent.com/${IMACORD_REPO}/main`;
 const RELEASE_BASE = `https://github.com/${IMACORD_REPO}/releases/latest/download`;
-const API_BASE = `https://api.github.com/repos/${IMACORD_REPO}`;
+
+// Core files must be written where they are actually loaded from (the dir containing patcher.js)
+const CORE_DIR = __dirname;
+
+const REQUEST_INIT: RequestInit = { headers: { "User-Agent": VENCORD_USER_AGENT } };
 
 const BUILTIN_PLUGIN_HASHES: Record<string, string> = {
     "amongick.js": "58b2cd8bb1068e0e79cdb5315670f91abb4ece49197f1b3b466c5c1731607482",
-    "DiscordDebloater.js": "fa968f06bbe4acb7a83de03d673b8f2fc3aad128dcbadf0781242876958415ae",
     "iMAMenu.js": "2d30028f95bf0a02bb51866e9137837feaff0f501ec1bcef773484828d64bbea",
     "MultiStreamPopout.js": "fcc7de78b086ece3d3b8ac8b08796038788cd0cfb951c24c1b9caf9fd2c83aad"
 };
+
+// Always purged, even if a manifest omits removedPlugins
+const ALWAYS_REMOVED_PLUGINS = ["DiscordDebloater.js"];
 
 interface ManifestFileEntry {
     hash: string;
@@ -54,14 +60,15 @@ interface UpdaterManifest {
     updatedAt?: string;
     dist?: Record<string, ManifestFileEntry>;
     plugins?: Record<string, ManifestFileEntry>;
+    removedPlugins?: string[];
 }
 
 interface PendingUpdateItem {
     filename: string;
-    url: string;
     destPath: string;
-    hash: string;
-    isCore: boolean;
+    url?: string;
+    hash?: string;
+    remove?: boolean;
 }
 
 interface GitChangeEntry {
@@ -70,248 +77,176 @@ interface GitChangeEntry {
     message: string;
 }
 
-interface GitHubReleaseAsset {
-    name: string;
-    browser_download_url: string;
-}
-
-interface GitHubRelease {
-    tag_name: string;
-    name: string;
-    body?: string;
-    assets: GitHubReleaseAsset[];
-}
-
-interface GitHubContentItem {
-    name: string;
-    download_url?: string;
-    sha: string;
-}
-
 let PendingUpdates: PendingUpdateItem[] = [];
 let CachedChanges: GitChangeEntry[] = [];
-let HasCoreUpdate = false;
 
 function sha256(data: Buffer | string): string {
     return createHash("sha256").update(data).digest("hex").toLowerCase();
 }
 
-async function githubGet<T>(endpoint: string): Promise<T> {
-    return fetchJson<T>(API_BASE + endpoint, {
-        headers: {
-            Accept: "application/vnd.github+json",
-            "User-Agent": VENCORD_USER_AGENT
-        }
-    });
+function isSafePluginName(filename: string) {
+    return filename.endsWith(".js") && basename(filename) === filename;
+}
+
+async function localHash(path: string): Promise<string | null> {
+    if (!existsSync(path)) return null;
+    try {
+        return sha256(await readFile(path));
+    } catch {
+        return "";
+    }
 }
 
 async function calculateGitChanges(): Promise<GitChangeEntry[]> {
     const isOutdated = await fetchUpdates();
-    if (!isOutdated) return [];
-    return CachedChanges;
+    return isOutdated ? CachedChanges : [];
 }
 
 async function fetchUpdates(): Promise<boolean> {
-    PendingUpdates = [];
-    CachedChanges = [];
-    HasCoreUpdate = false;
+    const pending: PendingUpdateItem[] = [];
+    const changes: GitChangeEntry[] = [];
 
-    if (!existsSync(DIST_DIR)) {
-        await mkdir(DIST_DIR, { recursive: true });
-    }
-    if (!existsSync(USER_PLUGINS_DIR)) {
-        await mkdir(USER_PLUGINS_DIR, { recursive: true });
-    }
+    await mkdir(USER_PLUGINS_DIR, { recursive: true });
 
     let manifest: UpdaterManifest | null = null;
-
     try {
-        manifest = await fetchJson<UpdaterManifest>(`${RELEASE_BASE}/manifest.json`, {
-            headers: { "User-Agent": VENCORD_USER_AGENT }
-        });
+        manifest = await fetchJson<UpdaterManifest>(`${RELEASE_BASE}/manifest.json`, REQUEST_INIT);
     } catch {
         try {
-            manifest = await fetchJson<UpdaterManifest>(`${RAW_BASE}/userplugins/manifest.json`, {
-                headers: { "User-Agent": VENCORD_USER_AGENT }
+            manifest = await fetchJson<UpdaterManifest>(`${RAW_BASE}/userplugins/manifest.json`, REQUEST_INIT);
+        } catch (e) {
+            console.warn("[iMCord Updater] Could not fetch manifest from release or raw fallback:", e);
+            return false;
+        }
+    }
+
+    if (!manifest) return false;
+
+    for (const [filename, info] of Object.entries(manifest.dist ?? {})) {
+        if (!VENCORD_FILES.includes(filename) || !info?.hash) continue;
+
+        const hash = info.hash.toLowerCase();
+        const destPath = join(CORE_DIR, filename);
+        const coreNeedsUpdate = (await localHash(destPath)) !== hash;
+
+        let distNeedsUpdate = false;
+        if (DIST_DIR && DIST_DIR !== CORE_DIR && existsSync(DIST_DIR)) {
+            distNeedsUpdate = (await localHash(join(DIST_DIR, filename))) !== hash;
+        }
+
+        if (!coreNeedsUpdate && !distNeedsUpdate) continue;
+
+        const updateUrl = info.url ?? `${RELEASE_BASE}/${encodeURIComponent(filename)}`;
+
+        if (coreNeedsUpdate) {
+            pending.push({
+                filename,
+                destPath,
+                hash,
+                url: updateUrl
             });
-        } catch {
-            // Manifest unavailable, fallback below
         }
+        if (distNeedsUpdate) {
+            pending.push({
+                filename: `${filename} (dist)`,
+                destPath: join(DIST_DIR, filename),
+                hash,
+                url: updateUrl
+            });
+        }
+
+        changes.push({
+            hash: hash.slice(0, 7),
+            author: "iMCord",
+            message: `[Vencord Core] Updated ${filename}`
+        });
     }
 
-    if (manifest) {
-        // 1. Check Core Vencord dist files
-        if (manifest.dist) {
-            for (const [filename, info] of Object.entries(manifest.dist)) {
-                if (!VENCORD_FILES.some(f => filename.startsWith(f)) || !info?.hash) continue;
+    const plugins = manifest.plugins ?? {};
+    for (const [filename, info] of Object.entries(plugins)) {
+        if (!isSafePluginName(filename) || !info?.hash) continue;
 
-                const remoteHash = info.hash.toLowerCase();
-                const localPath = join(DIST_DIR, filename);
+        const hash = info.hash.toLowerCase();
+        const destPath = join(USER_PLUGINS_DIR, filename);
+        const current = await localHash(destPath);
+        if (current === hash) continue;
+        if (current === null && BUILTIN_PLUGIN_HASHES[filename] === hash) continue;
 
-                if (existsSync(localPath)) {
-                    try {
-                        const localBuf = await readFile(localPath);
-                        if (sha256(localBuf) === remoteHash) continue;
-                    } catch {
-                        // Re-fetch on read failure
-                    }
-                }
-
-                PendingUpdates.push({
-                    filename,
-                    url: info.url ?? `${RELEASE_BASE}/${encodeURIComponent(filename)}`,
-                    destPath: localPath,
-                    hash: remoteHash,
-                    isCore: true
-                });
-
-                HasCoreUpdate = true;
-                CachedChanges.push({
-                    hash: remoteHash.slice(0, 7),
-                    author: "iMCord",
-                    message: `[Vencord Core] Updated ${filename}`
-                });
-            }
-        }
-
-        // 2. Check User Plugins
-        if (manifest.plugins) {
-            for (const [filename, info] of Object.entries(manifest.plugins)) {
-                if (!filename.endsWith(".js") || !info?.hash) continue;
-
-                const remoteHash = info.hash.toLowerCase();
-                const localPath = join(USER_PLUGINS_DIR, filename);
-
-                if (existsSync(localPath)) {
-                    try {
-                        const localBuf = await readFile(localPath);
-                        if (sha256(localBuf) === remoteHash) continue;
-                    } catch {
-                        // Re-fetch on read failure
-                    }
-                } else {
-                    const builtinHash = BUILTIN_PLUGIN_HASHES[filename];
-                    if (builtinHash && builtinHash.toLowerCase() === remoteHash) {
-                        continue;
-                    }
-                }
-
-                PendingUpdates.push({
-                    filename,
-                    url: info.url ?? `${RAW_BASE}/userplugins/${encodeURIComponent(filename)}`,
-                    destPath: localPath,
-                    hash: remoteHash,
-                    isCore: false
-                });
-
-                CachedChanges.push({
-                    hash: info.commit ? info.commit.slice(0, 7) : remoteHash.slice(0, 7),
-                    author: info.author ?? "iMAboud",
-                    message: info.message ? `[Plugin] ${filename}: ${info.message}` : `[Plugin] Updated ${filename}`
-                });
-            }
-        }
-    } else {
-        // Fallback: check GitHub release for core dist files, and contents/userplugins for plugins
-        try {
-            const release = await githubGet<GitHubRelease>("/releases/latest");
-            if (release && Array.isArray(release.assets)) {
-                for (const asset of release.assets) {
-                    if (VENCORD_FILES.some(f => asset.name === f)) {
-                        const localPath = join(DIST_DIR, asset.name);
-                        // Download buffer and check hash
-                        const buf = await fetchBuffer(asset.browser_download_url);
-                        const remoteHash = sha256(buf);
-
-                        if (existsSync(localPath)) {
-                            const localBuf = await readFile(localPath);
-                            if (sha256(localBuf) === remoteHash) continue;
-                        }
-
-                        PendingUpdates.push({
-                            filename: asset.name,
-                            url: asset.browser_download_url,
-                            destPath: localPath,
-                            hash: remoteHash,
-                            isCore: true
-                        });
-
-                        HasCoreUpdate = true;
-                        CachedChanges.push({
-                            hash: release.tag_name ?? "latest",
-                            author: "iMCord",
-                            message: `[Vencord Core] Updated ${asset.name}`
-                        });
-                    }
-                }
-            }
-        } catch (e) {
-            console.warn("[iMCord Updater] Fallback release check failed:", e);
-        }
-
-        try {
-            const contents = await githubGet<GitHubContentItem[]>("/contents/userplugins");
-            if (Array.isArray(contents)) {
-                for (const item of contents) {
-                    if (!item.name.endsWith(".js") || !item.download_url) continue;
-
-                    const filename = item.name;
-                    const localPath = join(USER_PLUGINS_DIR, filename);
-                    const remoteBuffer = await fetchBuffer(item.download_url);
-                    const remoteHash = sha256(remoteBuffer);
-
-                    if (existsSync(localPath)) {
-                        const localBuffer = await readFile(localPath);
-                        if (sha256(localBuffer) === remoteHash) continue;
-                    } else {
-                        const builtinHash = BUILTIN_PLUGIN_HASHES[filename];
-                        if (builtinHash && builtinHash.toLowerCase() === remoteHash) {
-                            continue;
-                        }
-                    }
-
-                    PendingUpdates.push({
-                        filename,
-                        url: item.download_url,
-                        destPath: localPath,
-                        hash: remoteHash,
-                        isCore: false
-                    });
-
-                    CachedChanges.push({
-                        hash: item.sha.slice(0, 7),
-                        author: "iMAboud",
-                        message: `[Plugin] Updated ${filename}`
-                    });
-                }
-            }
-        } catch (e) {
-            console.warn("[iMCord Updater] Fallback userplugins check failed:", e);
-        }
+        pending.push({
+            filename,
+            destPath,
+            hash,
+            url: info.url ?? `${RAW_BASE}/userplugins/${encodeURIComponent(filename)}`
+        });
+        changes.push({
+            hash: info.commit ? info.commit.slice(0, 7) : hash.slice(0, 7),
+            author: info.author ?? "iMAboud",
+            message: info.message ? `[Plugin] ${filename}: ${info.message}` : `[Plugin] Updated ${filename}`
+        });
     }
 
-    return PendingUpdates.length > 0;
+    const removed = new Set([...ALWAYS_REMOVED_PLUGINS, ...(manifest.removedPlugins ?? [])]);
+    for (const filename of removed) {
+        if (plugins[filename] || !isSafePluginName(filename)) continue;
+
+        const destPath = join(USER_PLUGINS_DIR, filename);
+        if (!existsSync(destPath)) continue;
+
+        pending.push({ filename, destPath, remove: true });
+        changes.push({
+            hash: "removed",
+            author: "iMCord",
+            message: `[Plugin] Removed ${filename}`
+        });
+    }
+
+    PendingUpdates = pending;
+    CachedChanges = changes;
+
+    return pending.length > 0;
+}
+
+async function writeAtomic(destPath: string, data: Buffer) {
+    const tmpPath = `${destPath}.download`;
+    await writeFile(tmpPath, data);
+    try {
+        await rename(tmpPath, destPath);
+    } catch {
+        await writeFile(destPath, data);
+        await rm(tmpPath, { force: true });
+    }
 }
 
 async function applyUpdates(): Promise<boolean> {
-    if (PendingUpdates.length === 0) return true;
+    const items = PendingUpdates;
+    PendingUpdates = [];
+    CachedChanges = [];
 
-    for (const updateItem of PendingUpdates) {
+    const failed: string[] = [];
+
+    for (const item of items) {
         try {
-            const contents = await fetchBuffer(updateItem.url);
-            if (!contents || contents.length === 0) {
-                console.warn(`[iMCord Updater] Downloaded empty content for ${updateItem.filename}`);
+            if (item.remove) {
+                await rm(item.destPath, { force: true });
                 continue;
             }
-            await writeFile(updateItem.destPath, contents);
+
+            const contents = await fetchBuffer(item.url!, REQUEST_INIT);
+            const actualHash = sha256(contents);
+            if (actualHash !== item.hash) {
+                throw new Error(`Hash mismatch (expected ${item.hash}, got ${actualHash})`);
+            }
+
+            await writeAtomic(item.destPath, contents);
         } catch (err) {
-            console.error(`[iMCord Updater] Failed to apply update for ${updateItem.filename}:`, err);
+            console.error(`[iMCord Updater] Failed to apply update for ${item.filename}:`, err);
+            failed.push(item.filename);
         }
     }
 
-    PendingUpdates = [];
-    CachedChanges = [];
-    HasCoreUpdate = false;
+    if (failed.length) {
+        throw new Error(`Failed to update: ${failed.join(", ")}. Please try again later.`);
+    }
 
     return true;
 }

@@ -48,8 +48,8 @@ namespace VencordInstaller
         {
             "iMAMenu.js",
             "MultiStreamPopout.js",
-            "amongick.js",
-            "DiscordDebloater.js"
+            "VoiceReconnect.js",
+            "CustomFont.js"
         };
 
         private static readonly Dictionary<string, string> BranchNames = new Dictionary<string, string>()
@@ -292,7 +292,10 @@ namespace VencordInstaller
                 "curshare.js",
                 "hideContextMenuItems.js",
                 "HideContextMenuItems.js",
-                "hideContextMenuItems.js.new"
+                "hideContextMenuItems.js.new",
+                "DiscordDebloater.js",
+                "discorddebloater.js",
+                "amongick.js"
             };
             foreach (string unwanted in unwantedPlugins)
             {

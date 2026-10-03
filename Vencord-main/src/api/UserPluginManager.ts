@@ -17,9 +17,12 @@
 */
 
 import { addPatch, isPluginEnabled, startPlugin, stopPlugin } from "@api/PluginManager";
-import { definePluginSettings, Settings, SettingsStore } from "@api/Settings";
+import { definePluginSettings, PlainSettings, Settings, SettingsStore } from "@api/Settings";
+import { disableStyle, enableStyle } from "@api/Styles";
 import { Logger } from "@utils/Logger";
 import definePlugin, { OptionType, Plugin, StartAt } from "@utils/types";
+import * as Webpack from "@webpack";
+import * as Common from "@webpack/common";
 import { React } from "@webpack/common";
 
 import Plugins, { PluginMeta } from "~plugins";
@@ -88,6 +91,16 @@ export function evalUserPlugin(code: string, fileName?: string): Plugin | null {
             "StartAt",
             "React",
             "Vencord",
+            "Webpack",
+            "find",
+            "findByProps",
+            "findStore",
+            "findByCode",
+            "Common",
+            "FluxDispatcher",
+            "enableStyle",
+            "disableStyle",
+            "Logger",
             "exports",
             "module",
             cleanCode
@@ -110,8 +123,9 @@ export function evalUserPlugin(code: string, fileName?: string): Plugin | null {
             WebpackReady: StartAt.WebpackReady
         };
 
-        const exportsObj = {};
+        const exportsObj: Record<string, unknown> = {};
         const moduleObj = { exports: exportsObj };
+        const vencordObj = window.Vencord || { Webpack, Settings, PlainSettings, React };
 
         const result = fn(
             customDefinePlugin,
@@ -119,12 +133,23 @@ export function evalUserPlugin(code: string, fileName?: string): Plugin | null {
             RuntimeOptionType,
             RuntimeStartAt,
             React,
-            (window as any).Vencord,
+            vencordObj,
+            Webpack,
+            Webpack.find,
+            Webpack.findByProps,
+            Webpack.findStore,
+            Webpack.findByCode,
+            Common,
+            Common.FluxDispatcher,
+            enableStyle,
+            disableStyle,
+            Logger,
             exportsObj,
             moduleObj
         );
 
-        const plugin = createdPlugin || result || (moduleObj.exports as any)?.default || moduleObj.exports;
+        const moduleExports = moduleObj.exports as Record<string, unknown>;
+        const plugin = createdPlugin || result || moduleExports?.default || moduleObj.exports;
         if (plugin && typeof plugin === "object" && plugin.name) {
             return plugin as Plugin;
         }
@@ -194,6 +219,8 @@ export async function deleteUserPlugin(pluginName: string): Promise<boolean> {
     delete Plugins[pluginName];
     delete PluginMeta[pluginName];
     userPluginCodeMap.delete(pluginName);
+    if (Settings.plugins[pluginName]) delete Settings.plugins[pluginName];
+    if (PlainSettings.plugins[pluginName]) delete PlainSettings.plugins[pluginName];
     notifyUserPluginsUpdated();
     return true;
 }
@@ -269,8 +296,16 @@ export async function loadAllUserPlugins() {
             "focus.js",
             "superdebloat.js",
             "fucknitro.js",
-            "curshare.js"
+            "curshare.js",
+            "discorddebloater.js",
+            "discorddebloater.js.new"
         ];
+        if ("DiscordDebloater" in Settings.plugins) {
+            Reflect.deleteProperty(Settings.plugins, "DiscordDebloater");
+        }
+        if ("DiscordDebloater" in PlainSettings.plugins) {
+            Reflect.deleteProperty(PlainSettings.plugins, "DiscordDebloater");
+        }
         for (const item of userPlugins) {
             const lowerFile = item.filename.toLowerCase();
             const lowerName = item.name.toLowerCase();

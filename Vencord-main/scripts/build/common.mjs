@@ -162,7 +162,7 @@ export const globPlugins = kind => ({
                     if (fileName.startsWith("_") || fileName.startsWith(".")) continue;
                     if (fileName === "index.ts") continue;
                     const cleanBaseName = fileName.replace(/\.(tsx?|jsx?)$/, "").toLowerCase();
-                    if (["curshare", "alwayshidenonvideo", "focus", "superdebloat", "fucknitro"].includes(cleanBaseName)) continue;
+                    if (["curshare", "alwayshidenonvideo", "focus", "superdebloat", "fucknitro", "discorddebloater"].includes(cleanBaseName)) continue;
 
                     const target = getPluginTarget(fileName);
 

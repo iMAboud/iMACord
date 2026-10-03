@@ -20,6 +20,14 @@
 import "~plugins";
 import "./fixWeirdAppRegionBug.css";
 
+import * as Api from "./api";
+import * as PluginManager from "./api/PluginManager";
+import * as Components from "./components";
+import * as Util from "./utils";
+import * as Updater from "./utils/updater";
+import * as Webpack from "./webpack";
+import * as WebpackPatcher from "./webpack/patchWebpack";
+
 export * as Api from "./api";
 export * as Plugins from "./api/PluginManager";
 export * as Components from "./components";
@@ -28,6 +36,18 @@ export * as Updater from "./utils/updater";
 export * as Webpack from "./webpack";
 export * as WebpackPatcher from "./webpack/patchWebpack";
 export { PlainSettings, Settings };
+
+(window as any).Vencord = {
+    Api,
+    Plugins: PluginManager,
+    Components,
+    Util,
+    Updater,
+    Webpack,
+    WebpackPatcher,
+    PlainSettings,
+    Settings
+};
 
 import { coreStyleRootNode, initStyles } from "@api/Styles";
 import { openSettingsTabModal, UpdaterTab } from "@components/settings";

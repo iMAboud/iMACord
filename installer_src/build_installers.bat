@@ -42,12 +42,12 @@ if not exist "userplugins\MultiStreamPopout.js" (
     echo [ERROR] userplugins\MultiStreamPopout.js not found in %ROOT_DIR%
     exit /b 1
 )
-if not exist "userplugins\amongick.js" (
-    echo [ERROR] userplugins\amongick.js not found in %ROOT_DIR%
+if not exist "userplugins\VoiceReconnect.js" (
+    echo [ERROR] userplugins\VoiceReconnect.js not found in %ROOT_DIR%
     exit /b 1
 )
-if not exist "userplugins\DiscordDebloater.js" (
-    echo [ERROR] userplugins\DiscordDebloater.js not found in %ROOT_DIR%
+if not exist "userplugins\CustomFont.js" (
+    echo [ERROR] userplugins\CustomFont.js not found in %ROOT_DIR%
     exit /b 1
 )
 
@@ -75,8 +75,8 @@ echo [1/2] Building iMCordCLI.exe (Console)...
     /resource:Vencord-main\dist\renderer.css,renderer.css ^
     /resource:userplugins\iMAMenu.js,iMAMenu.js ^
     /resource:userplugins\MultiStreamPopout.js,MultiStreamPopout.js ^
-    /resource:userplugins\amongick.js,amongick.js ^
-    /resource:userplugins\DiscordDebloater.js,DiscordDebloater.js ^
+    /resource:userplugins\VoiceReconnect.js,VoiceReconnect.js ^
+    /resource:userplugins\CustomFont.js,CustomFont.js ^
     /out:iMCordCLI.exe ^
     installer_src\InstallerCore.cs installer_src\ProgramCli.cs
 
@@ -104,8 +104,8 @@ echo [2/2] Building iMCord.exe (WPF GUI)...
     /resource:Vencord-main\dist\renderer.css,renderer.css ^
     /resource:userplugins\iMAMenu.js,iMAMenu.js ^
     /resource:userplugins\MultiStreamPopout.js,MultiStreamPopout.js ^
-    /resource:userplugins\amongick.js,amongick.js ^
-    /resource:userplugins\DiscordDebloater.js,DiscordDebloater.js ^
+    /resource:userplugins\VoiceReconnect.js,VoiceReconnect.js ^
+    /resource:userplugins\CustomFont.js,CustomFont.js ^
     /out:iMCord.exe ^
     installer_src\InstallerCore.cs installer_src\ProgramGui.cs
 
