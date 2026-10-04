@@ -7,10 +7,12 @@ let isCurrentlyDragging = false;
 let pluginRunning = false;
 const pendingNativeMounts = new Map();
 const nativeStyleSnapshots = new Map();
+const nativeAttributeSnapshots = new Map();
 const draggableHandles = new Map();
 const ownedNativeProfiles = new Map();
 const pendingProfileRequests = new Map();
 let nativeProfileDescriptor = null;
+let focusedProfileRequest = null;
 
 function getReactRuntime() {
     const common = window.Vencord?.Webpack?.Common || {};
@@ -87,12 +89,50 @@ function isOwnedNativeProfile(outer, record) {
     return false;
 }
 
+function resolveNativeProfileContext(anchor, descriptor, options = {}) {
+    const ChannelStore = getStore("ChannelStore", "getChannel");
+    let guildId = options.guildId;
+    let channelId = options.profileChannelId;
+    if (!Object.prototype.hasOwnProperty.call(options, "guildId")) {
+        let directMessage = false;
+        for (let fiber = getElementFiber(anchor); fiber; fiber = fiber.return) {
+            const props = fiber.memoizedProps;
+            if (!props || typeof props !== "object") continue;
+            const channel = props.channel || ChannelStore?.getChannel?.(props.channelId);
+            if (props.guildId === null || (channel && !channel.guild_id && (channel.type === 1 || channel.type === 3 || channel.recipients?.length))) {
+                directMessage = true;
+                guildId = undefined;
+                channelId = channel?.id;
+                break;
+            }
+            guildId ??= props.guildId ?? props.guild?.id ?? props.member?.guildId ?? channel?.guild_id;
+            channelId ??= channel?.id;
+            if (guildId) break;
+        }
+        const selectedChannelId = getStore("SelectedChannelStore", "getChannelId")?.getChannelId?.();
+        const selectedChannel = ChannelStore?.getChannel?.(selectedChannelId);
+        if (!directMessage) guildId ??= getStore("SelectedGuildStore", "getGuildId")?.getGuildId?.() ?? selectedChannel?.guild_id;
+        if (guildId && (!channelId || ChannelStore?.getChannel?.(channelId)?.guild_id !== guildId)) {
+            channelId = selectedChannel?.guild_id === guildId ? selectedChannelId : undefined;
+        }
+    }
+    return { guildId: guildId || undefined, channelId: channelId || options.channelId };
+}
+
+function makeReusableNativeDescriptor(descriptor) {
+    const identityProps = new Set(["user", "userId", "currentUser", "member", "guildMember", "profile", "userProfile", "guildProfile", "guildMemberProfile", "displayProfile", "guild", "guildId", "channel", "channelId", "voiceState"]);
+    return { ...descriptor, props: Object.fromEntries(Object.entries(descriptor.props).filter(([key]) => !identityProps.has(key))), providers: [] };
+}
+
 function openNativeProfile(userId, options = {}, descriptor = resolveNativeProfileDescriptor()) {
     if (!pluginRunning || !userId || !descriptor) return false;
     userId = String(userId);
+    focusedProfileRequest = userId;
     if (ownedNativeProfiles.has(userId)) {
         bringToFront(userId);
-        activeSessions.get(userId)?.session.ui?.querySelector("#qw-input")?.focus({ preventScroll: true });
+        const session = activeSessions.get(userId)?.session;
+        session?.focusComposer();
+        session?.scrollToLatest();
         return true;
     }
     const runtime = getReactRuntime();
@@ -110,12 +150,13 @@ function openNativeProfile(userId, options = {}, descriptor = resolveNativeProfi
     ownedNativeProfiles.set(userId, record);
     const anchorRef = { current: null };
     const noop = () => {};
+    const context = resolveNativeProfileContext(options.anchor, descriptor, options);
     const props = {
         ...descriptor.props,
         userId, user,
         currentUser: UserStore.getCurrentUser?.(),
-        channelId: options.channelId || getStore("ChannelStore", "getDMFromUserId")?.getDMFromUserId?.(userId),
-        guildId: options.guildId ?? descriptor.props.guildId,
+        channelId: context.channelId || getStore("ChannelStore", "getDMFromUserId")?.getDMFromUserId?.(userId),
+        guildId: context.guildId,
         shouldShow: true,
         clickTrap: false,
         ignoreModalClicks: true,
@@ -133,7 +174,8 @@ function openNativeProfile(userId, options = {}, descriptor = resolveNativeProfi
         props.children = nativeProps => runtime.React.createElement("span", { ...nativeProps, ref: anchorRef, "aria-hidden": true, style: { width: 1, height: 1, display: "block", opacity: 0 } });
     }
     let element = runtime.React.createElement(descriptor.type, props);
-    let providers = descriptor.providers.length ? descriptor.providers : captureNativeProviders(options.anchor);
+    let providers = options.nativeCapture ? descriptor.providers : captureNativeProviders(options.anchor);
+    if (!providers.length) providers = descriptor.providers;
     if (!providers.length) {
         for (const candidate of document.querySelectorAll('[class*="layerContainer_"], main [role="textbox"], [data-list-item-id], [class*="baseLayer_"]')) {
             providers = captureNativeProviders(candidate);
@@ -184,7 +226,9 @@ function setNativeStyle(owner, element, property, value) {
     if (!snapshot.properties.has(property)) {
         snapshot.properties.set(property, [element.style.getPropertyValue(property), element.style.getPropertyPriority(property)]);
     }
-    element.style.setProperty(property, value, "important");
+    if (element.style.getPropertyValue(property) !== value || element.style.getPropertyPriority(property) !== "important") {
+        element.style.setProperty(property, value, "important");
+    }
 }
 
 function restoreNativeStyles(owner) {
@@ -196,53 +240,77 @@ function restoreNativeStyles(owner) {
         }
         nativeStyleSnapshots.delete(element);
     }
+    for (const [element, snapshot] of nativeAttributeSnapshots) {
+        if (snapshot.owner !== owner) continue;
+        for (const [name, value] of snapshot.attributes) {
+            if (value === null) element.removeAttribute(name);
+            else element.setAttribute(name, value);
+        }
+        nativeAttributeSnapshots.delete(element);
+    }
+}
+
+function setNativeAttribute(owner, element, name, value) {
+    let snapshot = nativeAttributeSnapshots.get(element);
+    if (!snapshot) {
+        snapshot = { owner, attributes: new Map() };
+        nativeAttributeSnapshots.set(element, snapshot);
+    }
+    if (!snapshot.attributes.has(name)) snapshot.attributes.set(name, element.getAttribute(name));
+    if (element.getAttribute(name) !== value) element.setAttribute(name, value);
 }
 
 const _definePlugin = typeof definePlugin === "function" ? definePlugin : (window.Vencord?.Plugins?.definePlugin || (p => p));
-const _definePluginSettings = typeof definePluginSettings === "function" ? definePluginSettings : (window.Vencord?.Api?.Settings?.definePluginSettings || (s => ({ def: s, store: {} })));
-const OptType = (typeof OptionType !== "undefined" && OptionType) || { STRING: 0, NUMBER: 1, BIGINT: 2, BOOLEAN: 3, SELECT: 4, SLIDER: 5 };
 
 const STORAGE_KEY = "MBDM_persistent_config";
+const DEFAULT_CONFIG = { profileWidth: 260, chatWidth: 420, profileHeight: 570, fontSize: 14, showHeaders: false };
+const CONFIG_KEYS = ["myColor", "theirColor", "profileWidth", "chatWidth", "profileHeight", "fontSize", "showHeaders", "lastPosition", "nativeSplitLayoutVersion", "configUpdatedAt"];
+let currentConfig = null;
 
 function getStoredConfig() {
+    if (currentConfig) return currentConfig;
+    let legacy = {}, saved = {};
+    try { legacy = Object.assign({}, window.Vencord?.Settings?.plugins?.MBDM || {}); } catch (e) {}
     try {
         const raw = localStorage.getItem(STORAGE_KEY);
         if (raw) {
             const parsed = JSON.parse(raw);
-            if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed;
+            if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) saved = parsed;
         }
     } catch (e) {}
-    return {};
+    currentConfig = Number(legacy.configUpdatedAt || 0) > Number(saved.configUpdatedAt || 0)
+        ? Object.assign({}, saved, legacy) : Object.assign({}, legacy, saved);
+    return currentConfig;
 }
 
-function saveStoredConfig(updates) {
+function saveStoredConfig(updates, persist = true) {
+    // Apply first. Discord may remove localStorage after initialization, and
+    // failed persistence must never turn a working slider into a label-only edit.
+    currentConfig = Object.assign({}, getStoredConfig(), updates, { configUpdatedAt: Date.now() });
+    if (persist) persistStoredConfig();
+}
+
+function persistStoredConfig() {
+    if (!currentConfig) return;
+    // Preserve the plugin manager's live enabled/favorite flags when flushing
+    // pending profile settings during shutdown.
+    const snapshot = Object.fromEntries(CONFIG_KEYS.filter(key => Object.prototype.hasOwnProperty.call(currentConfig, key)).map(key => [key, currentConfig[key]]));
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot)); } catch (e) {}
     try {
-        const current = getStoredConfig();
-        const merged = Object.assign({}, current, updates);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+        const plugins = window.Vencord?.Settings?.plugins;
+        if (plugins) {
+            if (!plugins.MBDM) plugins.MBDM = {};
+            for (const [key, value] of Object.entries(snapshot)) {
+                if (plugins.MBDM[key] !== value) plugins.MBDM[key] = value;
+            }
+        }
     } catch (e) {}
-}
-
-const settings = _definePluginSettings({
-    myColor: { type: OptType.STRING, description: "My Bubble Color (Hex)", default: "", onChange: value => syncSettingPreference("myColor", value) },
-    theirColor: { type: OptType.STRING, description: "Their Bubble Color (Hex)", default: "", onChange: value => syncSettingPreference("theirColor", value) },
-    profileWidth: { type: OptType.NUMBER, description: "Profile Width (px)", default: 600, onChange: value => syncSettingPreference("profileWidth", value) },
-    showHeaders: { type: OptType.BOOLEAN, description: "Show avatar and username", default: true, onChange: value => syncSettingPreference("showHeaders", value) },
-    fontSize: { type: OptType.NUMBER, description: "Message font size (px)", default: 13, onChange: value => syncSettingPreference("fontSize", value) },
-    chatHeight: { type: OptType.NUMBER, description: "Chat scroller height (px)", default: 210, onChange: value => syncSettingPreference("chatHeight", value) },
-    autoFocus: { type: OptType.BOOLEAN, description: "Auto-focus composer input", default: true, onChange: value => syncSettingPreference("autoFocus", value) }
-});
-
-function syncSettingPreference(key, value) {
-    const next = value === undefined ? settings?.store?.[key] : value;
-    if (next !== undefined) saveStoredConfig({ [key]: next });
-    updateCustomStyles();
 }
 
 function getEffectiveConfig() {
-    // The floating settings panel already saved these preferences locally.
-    // Plugin-store defaults must not overwrite them when the plugin reloads.
-    const st = Object.assign({}, window.Vencord?.Settings?.plugins?.MBDM || {}, settings?.store || {}, getStoredConfig());
+    // Profile settings are local to the floating panel. Retain older saved
+    // plugin preferences without exposing a second settings page.
+    const st = getStoredConfig();
     const boundedNumber = (value, fallback, min, max) => {
         const numeric = typeof value === "number" || (typeof value === "string" && value.trim()) ? Number(value) : NaN;
         return Number.isFinite(numeric) ? Math.min(max, Math.max(min, numeric)) : fallback;
@@ -251,11 +319,11 @@ function getEffectiveConfig() {
     return {
         myColor: color(st.myColor),
         theirColor: color(st.theirColor),
-        profileWidth: boundedNumber(st.profileWidth, 600, 280, 750),
-        chatHeight: boundedNumber(st.chatHeight, 210, 150, 450),
-        fontSize: boundedNumber(st.fontSize, 13, 11, 18),
-        showHeaders: st.showHeaders !== false,
-        autoFocus: st.autoFocus !== false
+        profileWidth: boundedNumber(st.profileWidth, DEFAULT_CONFIG.profileWidth, 180, 750),
+        chatWidth: boundedNumber(st.chatWidth, DEFAULT_CONFIG.chatWidth, 240, 620),
+        profileHeight: boundedNumber(st.profileHeight, DEFAULT_CONFIG.profileHeight, 320, 900),
+        fontSize: boundedNumber(st.fontSize, DEFAULT_CONFIG.fontSize, 11, 18),
+        showHeaders: st.showHeaders === true,
     };
 }
 
@@ -278,19 +346,123 @@ function getPopoutOuter(element) {
     return element.closest('[id^="popout_"]') || element;
 }
 
+function getNativeSplitDimensions() {
+    const cfg = getEffectiveConfig();
+    const width = Math.min(cfg.profileWidth + cfg.chatWidth, Math.max(0, window.innerWidth - 20));
+    const ratio = cfg.profileWidth / (cfg.profileWidth + cfg.chatWidth);
+    return { width, detailsWidth: width * ratio, chatWidth: width * (1 - ratio), height: Math.min(cfg.profileHeight, Math.max(0, window.innerHeight - 20)) };
+}
+
+function getAttachedProfileWidth() { return getNativeSplitDimensions().width; }
+function getAttachedProfileHeight() { return getNativeSplitDimensions().height; }
+
+function getNativeProfileParts(outer) {
+    const frame = getNativeProfileFrame(outer);
+    const surfaces = '.user-profile-popout, [class*="userProfileOuter"], [class*="userPopoutOuter"], [class*="userProfileModalOuter"]';
+    // Retain the actual native surface after sizing adds width tokens to its
+    // ancestors. Otherwise a later lookup can mistake a portal for the card.
+    const surface = (frame.matches('[data-qw-native-surface="true"]') ? frame : frame.querySelector('[data-qw-native-surface="true"]'))
+        || (frame.matches(surfaces) ? frame : frame.querySelector(surfaces))
+        || frame.querySelector('[class^="outer_"], [class*=" outer_"]')
+        || frame.querySelector('[style*="--custom-user-profile-popout-width"]') || frame;
+    const excluded = element => element.closest('.qw-root, [class*="profileEffects_"], [class*="profileEffect_"]');
+    const banner = [...surface.querySelectorAll('[class*="bannerSVGWrapper_"], [class*="bannerPremium_"], [class*="banner_"]')].find(element => !excluded(element));
+    const inner = [...surface.children].find(element => !excluded(element) && (element.matches('[class*="userProfileInner_"], [class*="userPopoutInner_"]') || [...element.classList].some(name => name.startsWith('inner_'))) && (!banner || element.contains(banner))) || surface;
+    const bodies = [...surface.querySelectorAll('[class*="body_"], [class*="bodyContainer_"], [class*="profileBody_"], [class*="scroller_"]')].filter(element => !excluded(element) && !element.contains(banner));
+    const body = bodies.find(element => !bodies.some(parent => parent !== element && parent.contains(element))) || null;
+    return { frame, surface, inner, banner, body };
+}
+
+function resizeNativeBanner(outer, banner, width) {
+    if (!banner) return;
+    setNativeStyle(outer, banner, 'width', '100%');
+    setNativeStyle(outer, banner, 'max-width', 'none');
+    const svg = banner.matches('svg') ? banner : banner.querySelector('svg');
+    if (!svg) return;
+    const viewBox = svg.getAttribute('viewBox')?.trim().split(/[ ,]+/).map(Number);
+    const height = parseFloat(getComputedStyle(svg).height) || viewBox?.[3] || parseFloat(getComputedStyle(banner).height) || 100;
+    setNativeAttribute(outer, svg, 'width', String(width));
+    if (viewBox?.length === 4 && viewBox.every(Number.isFinite)) setNativeAttribute(outer, svg, 'viewBox', [viewBox[0], viewBox[1], width, viewBox[3]].join(' '));
+    setNativeStyle(outer, svg, 'width', '100%');
+    setNativeStyle(outer, svg, 'height', height + 'px');
+    for (const element of svg.querySelectorAll('foreignObject, mask rect')) {
+        // Preserve the native avatar cutout and banner height; only its
+        // full-width painted area follows the shared profile width.
+        if (element.tagName.toLowerCase() === 'rect' && element.getAttribute('width') === '100%') continue;
+        setNativeAttribute(outer, element, 'width', String(width));
+    }
+}
+
 function applyPopoutDimensions(outer) {
     if (!outer) return;
-    const width = Math.min(getEffectiveConfig().profileWidth, Math.max(280, window.innerWidth - 20));
-    const w = width + "px";
-    for (const property of ["width", "min-width", "max-width"]) setNativeStyle(outer, outer, property, w);
-    // Current native profiles size their visible frame with this variable;
-    // widening only the portal leaves that frame at Discord's default 300px.
-    setNativeStyle(outer, outer, "--custom-user-profile-popout-width", w);
-    for (const inner of outer.querySelectorAll('.user-profile-popout, [role="dialog"], [class*="userProfileOuter"], [class*="userProfileModalOuter"], [class*="userPopoutOuter"], [class*="userProfileInner_"]')) {
-        setNativeStyle(outer, inner, "--custom-user-profile-popout-width", w);
-        setNativeStyle(outer, inner, "box-sizing", "border-box");
-        for (const property of ["width", "min-width", "max-width"]) setNativeStyle(outer, inner, property, "100%");
+    const dimensions = getNativeSplitDimensions();
+    const parts = getNativeProfileParts(outer);
+    const { frame, surface, inner, banner, body } = parts;
+    const width = dimensions.width + 'px', height = dimensions.height + 'px';
+    setNativeAttribute(outer, frame, 'data-qw-native-split', 'true');
+    setNativeAttribute(outer, surface, 'data-qw-native-surface', 'true');
+    const shells = new Set([outer, frame, surface, inner]);
+    for (let parent = surface.parentElement; parent && frame.contains(parent); parent = parent.parentElement) {
+        shells.add(parent);
+        if (parent === frame) break;
     }
+    for (const element of shells) {
+        const nested = element !== outer && element !== frame;
+        for (const property of ['width', 'min-width', 'max-width']) setNativeStyle(outer, element, property, nested ? '100%' : width);
+        for (const property of ['height', 'min-height', 'max-height']) setNativeStyle(outer, element, property, nested ? '100%' : height);
+        setNativeStyle(outer, element, '--custom-user-profile-popout-width', width);
+        setNativeStyle(outer, element, 'box-sizing', 'border-box');
+        setNativeStyle(outer, element, 'overflow', 'visible');
+        if (element !== outer && getComputedStyle(element).position === 'static') setNativeStyle(outer, element, 'position', 'relative');
+    }
+    // Let the native frame decoration overhang, while preserving Discord's
+    // own clipping inside the effect so its intro starts within the card.
+    for (const effect of frame.querySelectorAll('[class*="profileEffects_"], [class*="profileEffect_"]')) {
+        if (effect.parentElement?.closest('[class*="profileEffects_"], [class*="profileEffect_"]')) continue;
+        for (let parent = effect.parentElement; parent && frame.contains(parent); parent = parent.parentElement) {
+            setNativeStyle(outer, parent, 'overflow', 'visible');
+            if (parent === frame) break;
+        }
+    }
+    // Constrain only siblings along the banner's ancestry. Discord retains
+    // ownership of all profile content; no React nodes are moved or wrapped.
+    const bannerPath = new Set();
+    for (let node = banner; node && surface.contains(node); node = node.parentElement) {
+        bannerPath.add(node);
+        if (node === surface) break;
+    }
+    for (const parent of new Set([inner, ...bannerPath])) {
+        if (parent === banner || parent.closest('[class*="profileEffects_"], [class*="profileEffect_"]')) continue;
+        for (const child of parent.children) {
+            if (bannerPath.has(child) || child.closest('.qw-root') || child.matches('[class*="profileEffects_"], [class*="profileEffect_"]') || child.matches('[data-qw-native-actions], [class*="native-actions"], [class*="headerButtons"], [class*="buttons_"], [class*="buttonsContainer"]')) continue;
+            if (['absolute', 'fixed'].includes(getComputedStyle(child).position) || child.matches('[class*="avatar"]')) continue;
+            const childStyle = getComputedStyle(child);
+            const contentWidth = Math.max(0, dimensions.detailsWidth - (parseFloat(childStyle.marginLeft) || 0) - (parseFloat(childStyle.marginRight) || 0)) + 'px';
+            setNativeStyle(outer, child, 'box-sizing', 'border-box');
+            setNativeStyle(outer, child, 'width', contentWidth);
+            setNativeStyle(outer, child, 'max-width', contentWidth);
+            setNativeStyle(outer, child, 'min-width', '0px');
+        }
+    }
+    resizeNativeBanner(outer, banner, Math.max(0, surface.clientWidth - parseFloat(getComputedStyle(surface).paddingLeft) - parseFloat(getComputedStyle(surface).paddingRight)));
+    if (body) {
+        const bodyStyle = getComputedStyle(body);
+        const bodyWidth = Math.max(0, dimensions.detailsWidth - (parseFloat(bodyStyle.marginLeft) || 0) - (parseFloat(bodyStyle.marginRight) || 0)) + 'px';
+        setNativeAttribute(outer, body, 'data-qw-native-details', 'true');
+        setNativeStyle(outer, body, 'box-sizing', 'border-box');
+        setNativeStyle(outer, body, 'width', bodyWidth);
+        setNativeStyle(outer, body, 'max-width', bodyWidth);
+        setNativeStyle(outer, body, 'min-height', '0px');
+        setNativeStyle(outer, body, 'flex', '0 1 auto');
+        setNativeStyle(outer, body, 'overflow-y', 'auto');
+        setNativeStyle(outer, body, 'overflow-x', 'hidden');
+        setNativeStyle(outer, body, 'scrollbar-width', 'thin');
+        setNativeStyle(outer, body, 'scrollbar-color', 'rgba(127, 127, 127, 0.3) transparent');
+        const rect = body.getBoundingClientRect(), card = surface.getBoundingClientRect();
+        const scaleY = surface.offsetHeight ? card.height / surface.offsetHeight : 1;
+        setNativeStyle(outer, body, 'max-height', Math.max(0, (card.bottom - rect.top) / (scaleY || 1) - 14) + 'px');
+    }
+    return parts;
 }
 
 function setPopoutScreenPosition(outer, left, top) {
@@ -305,29 +477,265 @@ function setPopoutScreenPosition(outer, left, top) {
     if (Math.abs(rect.top - top) > 0.5) setNativeStyle(outer, outer, "top", (top + (top - rect.top) / (scaleY || 1)) + "px");
 }
 
+function getOverlayScale(element, rect, style = getComputedStyle(element)) {
+    let width = parseFloat(style.width), height = parseFloat(style.height);
+    if (style.boxSizing !== 'border-box') {
+        width += (parseFloat(style.paddingLeft) || 0) + (parseFloat(style.paddingRight) || 0) + (parseFloat(style.borderLeftWidth) || 0) + (parseFloat(style.borderRightWidth) || 0);
+        height += (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0) + (parseFloat(style.borderTopWidth) || 0) + (parseFloat(style.borderBottomWidth) || 0);
+    }
+    // offsetWidth/Height round fractional sizes to integers, which can make
+    // transformed overlays alternate between two sizes on every frame.
+    return { x: width > 0 ? rect.width / width : 1, y: height > 0 ? rect.height / height : 1 };
+}
+
 function positionOwnedOverlay(element, left, top) {
-    element.style.setProperty("left", left + "px", "important");
-    element.style.setProperty("top", top + "px", "important");
+    const style = getComputedStyle(element);
+    if (style.left === 'auto') element.style.setProperty('left', '0px', 'important');
+    if (style.top === 'auto') element.style.setProperty('top', '0px', 'important');
     const rect = element.getBoundingClientRect();
-    const scaleX = element.offsetWidth ? rect.width / element.offsetWidth : 1;
-    const scaleY = element.offsetHeight ? rect.height / element.offsetHeight : 1;
-    element.style.setProperty("left", (left + (left - rect.left) / (scaleX || 1)) + "px", "important");
-    element.style.setProperty("top", (top + (top - rect.top) / (scaleY || 1)) + "px", "important");
+    const { x: scaleX, y: scaleY } = getOverlayScale(element, rect, style);
+    if (Math.abs(left - rect.left) > .5) element.style.setProperty("left", ((parseFloat(style.left) || 0) + (left - rect.left) / (scaleX || 1)) + "px", "important");
+    if (Math.abs(top - rect.top) > .5) element.style.setProperty("top", ((parseFloat(style.top) || 0) + (top - rect.top) / (scaleY || 1)) + "px", "important");
 }
 
 function getNativeOverlayHost(outer) {
-    return outer?.querySelector('[role="dialog"]') || outer || document.body;
+    // Use the shared positioning layer so native profile scrolling cannot
+    // clip the plugin's settings or full-window image viewer.
+    return outer?.parentElement || document.body;
+}
+
+function getNativeProfileFrame(outer) {
+    return outer.querySelector('[role="dialog"]') || outer.querySelector(".user-profile-popout") || outer;
+}
+
+function getChatProfileOwner(element) {
+    for (const data of activeSessions.values()) {
+        if (data.session.ui?.contains(element)) return data.outer;
+    }
+    return element.closest('[data-qw-managed="true"]');
+}
+
+function syncChatTheme(frame, ui) {
+    const surfaces = [...frame.querySelectorAll('[style*="--profile-gradient-"], .user-profile-popout, [class*="userProfileInner"], [class*="inner_"]')].reverse();
+    surfaces.push(frame);
+    let primary, secondary, text, muted, background;
+    for (const surface of surfaces) {
+        const style = getComputedStyle(surface);
+        const validColor = value => value && CSS.supports("color", value) ? value : undefined;
+        primary ||= validColor(style.getPropertyValue("--profile-gradient-primary-color").trim());
+        secondary ||= validColor(style.getPropertyValue("--profile-gradient-secondary-color").trim());
+        text ||= validColor(style.getPropertyValue("--text-normal").trim());
+        muted ||= validColor(style.getPropertyValue("--text-muted").trim());
+        if (!background && style.backgroundColor !== "rgba(0, 0, 0, 0)" && style.backgroundColor !== "transparent") background = style.backgroundColor;
+    }
+    const variables = {
+        "--qw-profile-primary": primary || background || "#1c1d20",
+        "--qw-profile-secondary": secondary || primary || background || "#1c1d20",
+        "--qw-profile-text": text || "#e4e4e7",
+        "--qw-profile-muted": muted || text || "#b5b6bc"
+    };
+    let changed = false;
+    for (const [name, value] of Object.entries(variables)) {
+        if (ui.style.getPropertyValue(name) !== value) {
+            ui.style.setProperty(name, value);
+            changed = true;
+        }
+    }
+    return changed;
+}
+
+
+
+function findNativeChatAction(outer, action) {
+    const labels = {
+        call: /call|مكالمة|اتصال/i,
+        video: /video|فيديو|مرئي/i,
+        more: /more|المزيد|خيارات/i
+    };
+    return [...outer.querySelectorAll('button, [role="button"]')].find(button => {
+        if (button.closest(".qw-root") || button.className?.includes?.("qw-")) return false;
+        const label = button.getAttribute("aria-label") || button.getAttribute("title") || "";
+        return labels[action].test(label) && (action !== "call" || !labels.video.test(label));
+    });
+}
+
+function getNativeProfileActions(surface, action) {
+    if (!action) return null;
+    const named = action.closest('[data-qw-native-actions], [class*="native-actions"], [class*="headerButtons"], [class*="buttons_"], [class*="buttonsContainer"]');
+    if (named && named !== action && surface.contains(named)) return named;
+    // Native action containers have changed names between Discord versions.
+    // Find their compact shared row without moving the banner or its content.
+    for (let node = action.parentElement; node && node !== surface && surface.contains(node); node = node.parentElement) {
+        const rect = node.getBoundingClientRect();
+        if (rect.height > 80 || rect.width > Math.max(320, surface.getBoundingClientRect().width * .7)) break;
+        const buttons = [...node.querySelectorAll('button, [role="button"]')].filter(button => !button.closest('.qw-root') && button.getClientRects().length);
+        if (buttons.length > 1) return node;
+    }
+    return null;
+}
+
+function alignNativeProfileActions(outer, actions, controls) {
+    if (!actions || !controls) return;
+    setNativeAttribute(outer, actions, 'data-qw-native-actions', 'true');
+    setNativeStyle(outer, actions, 'width', 'max-content');
+    setNativeStyle(outer, actions, 'max-width', 'none');
+    setNativeStyle(outer, actions, 'flex-wrap', 'nowrap');
+    setNativeStyle(outer, actions, 'flex-shrink', '0');
+    let style = getComputedStyle(actions);
+    if (style.position === 'static') setNativeStyle(outer, actions, 'position', 'relative');
+    // Position from measured edges in the row's own coordinate space. Its
+    // parent need not be the profile surface, and native transforms stay intact.
+    setNativeStyle(outer, actions, 'left', 'auto');
+    style = getComputedStyle(actions);
+    const row = actions.getBoundingClientRect(), target = controls.getBoundingClientRect();
+    const scaleX = actions.offsetWidth ? row.width / actions.offsetWidth : 1;
+    const scaleY = actions.offsetHeight ? row.height / actions.offsetHeight : 1;
+    const deltaX = target.left - 6 * (scaleX || 1) - row.right;
+    const deltaY = target.top + target.height / 2 - row.top - row.height / 2;
+    if (Math.abs(deltaX) > .5) setNativeStyle(outer, actions, 'right', ((parseFloat(style.right) || 0) - deltaX / (scaleX || 1)) + 'px');
+    if (Math.abs(deltaY) > .5) setNativeStyle(outer, actions, 'top', ((parseFloat(style.top) || 0) + deltaY / (scaleY || 1)) + 'px');
+}
+
+function getNativeChatHost(parts) {
+    const effects = [...parts.frame.querySelectorAll('[class*="profileEffects_"], [class*="profileEffect_"]')];
+    // Share a paint context with the real effects, including versions where
+    // Discord places the effect beside its themed inner surface.
+    for (let host = parts.inner; host && parts.frame.contains(host); host = host.parentElement) {
+        if (effects.every(effect => host.contains(effect))) return host;
+        if (host === parts.frame) break;
+    }
+    return parts.frame;
+}
+
+function updateNativeChatLayer(parts, ui) {
+    let level = 1;
+    for (const effect of parts.frame.querySelectorAll('[class*="profileEffects_"], [class*="profileEffect_"]')) {
+        for (const visual of [effect, ...effect.querySelectorAll('*')]) {
+            const nativeLevel = parseInt(getComputedStyle(visual).zIndex, 10);
+            if (Number.isFinite(nativeLevel)) level = Math.max(level, nativeLevel + 1);
+        }
+    }
+    ui.dataset.chatLayer = String(level);
+    if (ui.style.zIndex !== String(level)) ui.style.zIndex = String(level);
+}
+
+function attachChatLayout(outer, ui) {
+    let parts = applyPopoutDimensions(outer);
+    // Keep chat inside the actual native card so its hover effects include
+    // both columns. Only plugin-owned UI is appended; native nodes stay put.
+    getNativeChatHost(parts).appendChild(ui);
+    ui.classList.add('qw-native-split-chat');
+    let stopped = false, animation = 0, lastGeometry = '', nextThemeRead = 0, dirty = true;
+    const header = ui.querySelector('.qw-header');
+
+    function refresh(force = true) {
+        if (stopped || !outer.isConnected || !ui.isConnected) return;
+        const { frame, surface, banner } = getNativeProfileParts(outer);
+        if (force || performance.now() >= nextThemeRead) {
+            syncChatTheme(frame, ui);
+            if (activeSettingsOwner === outer && activeSettingsModal) syncSettingsTheme(outer, activeSettingsModal);
+            const nextParts = getNativeProfileParts(outer);
+            const host = getNativeChatHost(nextParts);
+            if (ui.parentElement !== host && !isCurrentlyDragging) host.appendChild(ui);
+            updateNativeChatLayer(nextParts, ui);
+            nextThemeRead = performance.now() + 250;
+        }
+        let rect = surface.getBoundingClientRect();
+        let bannerRect = banner?.getBoundingClientRect();
+        const controls = header.querySelector('.qw-header-controls');
+        const controlsWidth = controls.getBoundingClientRect().width;
+        const action = findNativeChatAction(outer, 'more') || findNativeChatAction(outer, 'call');
+        const actions = getNativeProfileActions(surface, action);
+        const actionsRect = actions?.getBoundingClientRect();
+        const geometry = [rect.x, rect.y, rect.width, rect.height, bannerRect?.bottom, controlsWidth, actionsRect?.x, actionsRect?.y, actionsRect?.width, actionsRect?.height, window.innerWidth, window.innerHeight].join(':');
+        if (!force && geometry === lastGeometry) return;
+        parts = applyPopoutDimensions(outer);
+        rect = surface.getBoundingClientRect();
+        const targetLeft = Math.max(10, Math.min(window.innerWidth - rect.width - 10, rect.left));
+        const targetTop = Math.max(10, Math.min(window.innerHeight - rect.height - 10, rect.top));
+        if (Math.abs(targetLeft - rect.left) > .5 || Math.abs(targetTop - rect.top) > .5) {
+            const portal = outer.getBoundingClientRect();
+            setPopoutScreenPosition(outer, portal.left + targetLeft - rect.left, portal.top + targetTop - rect.top);
+            rect = surface.getBoundingClientRect();
+            bannerRect = banner?.getBoundingClientRect();
+        }
+        const dimensions = getNativeSplitDimensions();
+        const nativeStyle = getComputedStyle(surface);
+        const scaleX = surface.offsetWidth ? rect.width / surface.offsetWidth : 1;
+        const scaleY = surface.offsetHeight ? rect.height / surface.offsetHeight : 1;
+        const insetLeft = parseFloat(nativeStyle.borderLeftWidth) + parseFloat(nativeStyle.paddingLeft);
+        const insetRight = parseFloat(nativeStyle.borderRightWidth) + parseFloat(nativeStyle.paddingRight);
+        const insetBottom = parseFloat(nativeStyle.borderBottomWidth) + parseFloat(nativeStyle.paddingBottom);
+        const leftWidth = dimensions.detailsWidth;
+        const left = rect.left + (insetLeft + leftWidth) * scaleX;
+        const top = Math.min(rect.bottom - 80 * scaleY, Math.max(rect.top + 46 * scaleY, bannerRect?.bottom || rect.top + 100 * scaleY));
+        const width = Math.max(0, rect.right - insetRight * scaleX - left);
+        const height = Math.max(0, rect.bottom - insetBottom * scaleY - top - 10 * scaleY);
+        const uiRect = ui.getBoundingClientRect();
+        const { x: uiScaleX, y: uiScaleY } = getOverlayScale(ui, uiRect);
+        ui.style.width = width / (uiScaleX || 1) + 'px';
+        ui.style.height = height / (uiScaleY || 1) + 'px';
+        positionOwnedOverlay(ui, left, top);
+        header.style.width = width / (uiScaleX || 1) + 'px';
+        positionOwnedOverlay(header, left, rect.top + (parseFloat(nativeStyle.borderTopWidth) + 8) * scaleY);
+        // Keep Discord's real native action buttons. Settings and X share
+        // their row over the full-width banner instead of a second chat header.
+        for (const button of header.querySelectorAll('[data-qw-native-action]')) button.hidden = true;
+        if (action) {
+            const actionStyle = getComputedStyle(action);
+            const background = actionStyle.backgroundColor === 'rgba(0, 0, 0, 0)' ? 'rgba(24, 22, 32, .75)' : actionStyle.backgroundColor;
+            for (const [name, value] of [['--qw-native-action-background', background], ['--qw-native-action-text', actionStyle.color]]) {
+                if (header.style.getPropertyValue(name) !== value) header.style.setProperty(name, value);
+            }
+        }
+        alignNativeProfileActions(outer, actions, controls);
+        // Keep the empty drag region clear of native buttons even when the
+        // chat glass paints above their original stacking layer.
+        const spacer = header.querySelector('.qw-header-spacer');
+        spacer.style.marginRight = actions ? (actions.getBoundingClientRect().width + 6 * scaleX) / (uiScaleX || 1) + 'px' : '0px';
+        if (activeSettingsOwner === outer) positionFloatingSettings(activeSettingsModal, outer);
+        ui.dataset.side = 'inside';
+        lastGeometry = geometry;
+    }
+    function trackPosition() {
+        if (stopped) return;
+        const force = dirty;
+        dirty = false;
+        refresh(force);
+        animation = requestAnimationFrame(trackPosition);
+    }
+    const resizeObserver = new ResizeObserver(() => { dirty = true; });
+    resizeObserver.observe(parts.surface);
+    if (parts.banner) resizeObserver.observe(parts.banner);
+    const nativeObserver = new MutationObserver(records => {
+        if (records.some(record => !record.target.closest?.('.qw-root, #qw-floating-settings, #qw-lightbox'))) dirty = true;
+    });
+    nativeObserver.observe(parts.frame, { childList: true, attributes: true, subtree: true, attributeFilter: ['class', 'style'] });
+    const onPointerDown = () => bringToFront(ui.dataset.userId);
+    ui.addEventListener('pointerdown', onPointerDown, true);
+    refresh();
+    animation = requestAnimationFrame(trackPosition);
+    return { refresh, destroy() {
+        stopped = true;
+        cancelAnimationFrame(animation);
+        resizeObserver.disconnect();
+        nativeObserver.disconnect();
+        ui.removeEventListener('pointerdown', onPointerDown, true);
+    } };
 }
 
 function positionProfilePopout(outer, index = 0) {
     if (!outer) return;
     applyPopoutDimensions(outer);
-    const width = Math.min(getEffectiveConfig().profileWidth, Math.max(280, window.innerWidth - 20));
+    const width = getAttachedProfileWidth();
     const saved = getStoredConfig().lastPosition;
     const offset = index * 24;
-    const left = Math.max(10, Math.min(window.innerWidth - width - 10, (saved?.left ?? (window.innerWidth - width) / 2) + offset));
-    const top = Math.max(10, Math.min(window.innerHeight - 80, (saved?.top ?? (window.innerHeight - 500) / 2) + offset));
-    for (const [property, value] of Object.entries({ position: "fixed", transform: "none", right: "auto", bottom: "auto", margin: "0", overflow: "visible", "pointer-events": "auto" })) {
+    const combinedWidth = width;
+    const left = Math.max(10, Math.min(window.innerWidth - width - 10, (saved?.left ?? (window.innerWidth - combinedWidth) / 2) + offset));
+    const top = Math.max(10, Math.min(window.innerHeight - 80, (saved?.top ?? (window.innerHeight - getAttachedProfileHeight()) / 2) + offset));
+    const positionStyles = { position: "fixed", transform: "none", right: "auto", bottom: "auto", margin: "0", "pointer-events": "auto" };
+    if (getNativeProfileFrame(outer) !== outer) positionStyles.overflow = "visible";
+    for (const [property, value] of Object.entries(positionStyles)) {
         setNativeStyle(outer, outer, property, value);
     }
     setPopoutScreenPosition(outer, left, top);
@@ -341,6 +749,7 @@ function enforcePopoutWidth() {
     for (const outer of outers) {
         applyPopoutDimensions(outer);
     }
+    for (const data of activeSessions.values()) data.session.layout?.refresh();
 }
 
 function bringToFront(userId) {
@@ -353,7 +762,12 @@ function bringToFront(userId) {
     }
     for (let i = 0; i < sessionStack.length; i++) {
         const record = ownedNativeProfiles.get(String(sessionStack[i]));
-        if (record?.outer) setNativeStyle(record.outer, record.outer, "z-index", String(i - sessionStack.length));
+        // Both columns and the native decoration share this portal's stack.
+        const level = (i - sessionStack.length) * 3;
+        if (record?.outer) setNativeStyle(record.outer, record.outer, "z-index", String(level));
+        const session = activeSessions.get(String(sessionStack[i]))?.session;
+        // Chat paints above the native background inside its own portal.
+        if (session?.ui) session.ui.style.zIndex = session.ui.dataset.chatLayer || "1";
     }
 }
 
@@ -395,7 +809,6 @@ function cleanupNativeSession(userId, requestClose = false) {
     closeFloatingSettings();
     if (activeLightboxCleanup && activeLightboxOwner === data.outer) activeLightboxCleanup();
     try { data.session.destroy(); } catch (e) {}
-    if (!data.hadHostClass) data.chatHost.classList.remove("qw-chat-host");
     for (const [handle, binding] of draggableHandles) {
         if (binding.outer === data.outer) binding.cleanup();
     }
@@ -434,9 +847,15 @@ function updateCustomStyles() {
     }
 
     el.textContent = `
-        .qw-scroller { height: ${cfg.chatHeight}px !important; }
+        .qw-root {
+            --qw-my-bubble-color: ${cfg.myColor || "#613f45"};
+            --qw-their-bubble-color: ${cfg.theirColor || "#99578d"};
+            --qw-my-bubble-text: ${myTextContrast || "#ffffff"};
+            --qw-their-bubble-text: ${theirTextContrast || "#ffffff"};
+        }
         .qw-msg-bubble { font-size: ${cfg.fontSize}px !important; }
         .qw-msg-header { display: ${cfg.showHeaders ? "flex" : "none"} !important; }
+        .qw-msg-them .qw-msg-wrapper { padding-left: ${cfg.showHeaders ? "46px" : "0"}; }
         ${cfg.myColor ? `
             .qw-msg-me .qw-msg-bubble { background: ${cfg.myColor} !important; }
             ${myTextContrast ? `
@@ -468,7 +887,7 @@ function updateCustomStyles() {
             ` : ""}
         ` : `
             .qw-msg-me .qw-msg-bubble {
-                background: linear-gradient(135deg, var(--profile-gradient-primary-color, var(--brand-500, #5865f2)), var(--profile-gradient-secondary-color, var(--brand-600, #4752c4))) !important;
+                background: #99578d !important;
             }
         `}
         ${cfg.theirColor ? `
@@ -497,11 +916,10 @@ function updateCustomStyles() {
 }
 
 const PLUGIN_STYLES = `
-:root { --qw-profile-width: 600px; }
+:root { --qw-profile-width: 260px; }
 [data-qw-managed="true"] {
     box-sizing: border-box !important;
-    max-height: 94vh !important;
-    --reference-position-layer-max-height: 94vh !important;
+    --reference-position-layer-max-height: calc(100vh - 20px) !important;
 }
 [data-qw-managed="true"] [role="dialog"],
 [data-qw-managed="true"] .user-profile-popout,
@@ -511,35 +929,83 @@ const PLUGIN_STYLES = `
 [data-qw-managed="true"] [class*="userProfileInner"] {
     box-sizing: border-box !important;
 }
-.qw-chat-host {
-    display: flex !important;
-    flex-direction: column !important;
-    min-height: 0 !important;
-}
-[data-qw-managed="true"] [class*="body_"]:not(:has(.qw-root)) {
-    max-height: 110px !important;
-    overflow-y: auto !important;
-    flex-shrink: 0 !important;
-}
 
 .qw-native-hidden { display: none !important; }
 
 .qw-root, #quick-whisper-root, [id^="quick-whisper-root"] {
     display: flex !important;
     flex-direction: column !important;
-    padding: 6px 12px 12px !important;
-    background: rgba(0, 0, 0, 0.08) !important;
-    backdrop-filter: blur(20px) !important;
-    -webkit-backdrop-filter: blur(20px) !important;
+    padding: 0 !important;
+    background: linear-gradient(135deg, color-mix(in srgb, var(--qw-profile-primary, #1c1d20) 76%, transparent), color-mix(in srgb, var(--qw-profile-secondary, #1c1d20) 76%, transparent)) !important;
+    backdrop-filter: blur(22px) saturate(1.1) !important;
+    -webkit-backdrop-filter: blur(22px) saturate(1.1) !important;
     box-shadow: none !important;
-    border-top: 1px solid var(--profile-gradient-primary-color, rgba(255, 255, 255, 0.08)) !important;
-    border-bottom-left-radius: 8px !important;
-    border-bottom-right-radius: 8px !important;
+    border: 1px solid color-mix(in srgb, var(--qw-profile-text, #fff) 12%, transparent) !important;
+    border-radius: 0 16px 16px 0 !important;
     box-sizing: border-box !important;
-    width: 100% !important;
-    min-height: 285px !important;
-    z-index: 10 !important;
-    position: relative !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    position: fixed !important;
+    overflow: hidden;
+    pointer-events: auto;
+    color: var(--qw-profile-text, #e4e4e7);
+    direction: ltr;
+    font-family: var(--font-primary, "gg sans", "Noto Sans", sans-serif);
+}
+.qw-chat-sidecar[data-side="left"] {
+    border-radius: 16px 0 0 16px !important;
+}
+.qw-root.qw-native-split-chat {
+    background: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    border: 0 !important;
+    border-left: 1px solid color-mix(in srgb, var(--qw-profile-text, #fff) 12%, transparent) !important;
+    border-radius: 0 !important;
+    overflow: visible !important;
+    isolation: auto !important;
+}
+.qw-native-split-chat > .qw-chat-glass {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background: linear-gradient(135deg, color-mix(in srgb, var(--qw-profile-primary, #1c1d20) 16%, transparent), color-mix(in srgb, var(--qw-profile-secondary, #1c1d20) 12%, transparent));
+    backdrop-filter: blur(18px) saturate(1.1);
+    -webkit-backdrop-filter: blur(18px) saturate(1.1);
+}
+.qw-native-split-chat .qw-scroller,
+.qw-native-split-chat .qw-composer { position: relative; z-index: 1; }
+.qw-native-split-chat .qw-header {
+    position: fixed;
+    height: 36px;
+    min-height: 36px;
+    padding: 0 10px;
+    border: 0;
+    z-index: 40;
+    pointer-events: none;
+}
+.qw-native-split-chat .qw-header-controls,
+.qw-native-split-chat .qw-header-spacer { pointer-events: auto; }
+.qw-root.qw-native-split-chat .qw-scroller { padding: 16px 14px 10px !important; }
+.qw-native-split-chat .qw-composer {
+    margin: 8px 14px 0 !important;
+    width: calc(100% - 28px) !important;
+    border-radius: 12px !important;
+    background: color-mix(in srgb, var(--qw-profile-text, #241b22) 22%, var(--qw-profile-primary, #1c1d20)) !important;
+    border: 0 !important;
+}
+.qw-native-split-chat .qw-msg-them .qw-msg-bubble { background: var(--qw-their-bubble-color, #99578d) !important; color: var(--qw-their-bubble-text, #fff) !important; }
+.qw-native-split-chat .qw-msg-me .qw-msg-bubble { background: var(--qw-my-bubble-color, #613f45) !important; color: var(--qw-my-bubble-text, #fff) !important; }
+.qw-native-split-chat .qw-msg-header { position: static; display: flex; align-items: center; gap: 5px; margin: 8px 0 4px; }
+.qw-native-split-chat .qw-author-avatar { width: 20px; height: 20px; }
+.qw-native-split-chat .qw-author-name { display: inline; color: var(--qw-profile-text); font-size: 12px; }
+.qw-native-split-chat .qw-msg-them .qw-msg-wrapper { padding-left: 0; }
+.qw-native-split-chat .qw-msg-me .qw-msg-header { display: none !important; }
+.qw-native-split-chat .qw-header-controls button {
+    background: var(--qw-native-action-background, rgba(24, 22, 32, .75)) !important;
+    color: var(--qw-native-action-text, #f4f3f5) !important;
+    border: 0 !important;
 }
 .qw-top-close-btn {
     width: 32px !important;
@@ -548,8 +1014,6 @@ const PLUGIN_STYLES = `
     min-height: 32px !important;
     border-radius: 50% !important;
     background: rgba(0, 0, 0, 0.55) !important;
-    backdrop-filter: blur(8px) !important;
-    -webkit-backdrop-filter: blur(8px) !important;
     border: 1px solid rgba(255, 255, 255, 0.12) !important;
     color: var(--interactive-normal, #b5bac1) !important;
     cursor: pointer !important;
@@ -559,15 +1023,14 @@ const PLUGIN_STYLES = `
     padding: 0 !important;
     margin: 0 !important;
     transition: transform 0.18s ease, background 0.15s ease, color 0.15s ease, border-color 0.15s ease !important;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35) !important;
+    box-shadow: none !important;
     flex-shrink: 0 !important;
     z-index: 1000 !important;
 }
 .qw-top-close-btn:hover {
     color: #ffffff !important;
-    background: rgba(237, 66, 69, 0.85) !important;
-    border-color: rgba(237, 66, 69, 0.5) !important;
-    transform: scale(1.08) !important;
+    background: #303136 !important;
+    border-color: #484950 !important;
 }
 .qw-top-close-btn svg {
     width: 15px !important;
@@ -576,11 +1039,38 @@ const PLUGIN_STYLES = `
     display: block !important;
 }
 .qw-header {
-    display: none !important;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 52px;
+    padding: 8px 14px;
+    box-sizing: border-box;
+    flex-shrink: 0;
+    border-bottom: 1px solid color-mix(in srgb, var(--qw-profile-text, #fff) 10%, transparent);
+}
+.qw-header-controls { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.qw-header-action { width: 32px; height: 32px; border: 0; padding: 7px; border-radius: 50%; background: color-mix(in srgb, var(--qw-profile-primary, #18191c) 70%, transparent); color: var(--qw-profile-text, #bfc0c6); cursor: pointer; }
+.qw-header-action:hover { background: color-mix(in srgb, var(--qw-profile-text, #fff) 10%, transparent); }
+.qw-header-action[hidden] { display: none; }
+.qw-header-action svg { width: 18px; height: 18px; fill: currentColor; }
+.qw-date-divider { display: flex; align-items: center; gap: 14px; margin: 2px 0 18px; font-size: 12px; color: var(--qw-profile-muted, #b5b6bc); }
+.qw-date-divider::before, .qw-date-divider::after { content: ""; height: 1px; background: color-mix(in srgb, var(--qw-profile-text, #fff) 10%, transparent); flex: 1; }
+.qw-chat-sidecar button:focus-visible { outline: 2px solid #b5b6bc; outline-offset: 2px; }
+.qw-root.qw-chat-sidecar { isolation: isolate; }
+.qw-root.qw-chat-sidecar .qw-scroller {
+    height: auto;
+    flex: 1 1 0;
+    padding: 22px 20px 12px;
+    scroll-behavior: smooth;
+}
+@media (prefers-reduced-motion: reduce) {
+    .qw-root.qw-chat-sidecar .qw-scroller { scroll-behavior: auto; }
 }
 .qw-header-spacer {
     flex: 1;
-    height: 100%;
+    min-width: 20px;
+    min-height: 34px;
+    align-self: stretch;
     cursor: grab;
 }
 .qw-header-spacer:active {
@@ -588,9 +1078,8 @@ const PLUGIN_STYLES = `
 }
 
 .qw-scroller {
-    height: 210px;
     min-height: 0;
-    flex: 0 0 auto;
+    flex: 1 1 0;
     overflow-y: auto;
     overscroll-behavior: contain;
     touch-action: pan-y;
@@ -605,16 +1094,17 @@ const PLUGIN_STYLES = `
 .qw-scroller::-webkit-scrollbar { width: 5px; }
 .qw-scroller::-webkit-scrollbar-thumb { background: var(--scrollbar-auto-thumb, rgba(255, 255, 255, 0.2)); border-radius: 4px; }
 .qw-loading-banner { text-align: center; font-size: 11px; color: var(--text-muted, #949ba4); padding: 3px 0; }
-.qw-messages-container { display: flex; flex-direction: column; gap: 4px; flex-shrink: 0; }
-.qw-msg-row { display: flex; flex-direction: column; width: 100%; }
-.qw-msg-row.qw-msg-has-header { margin-top: 6px; }
-.qw-msg-header { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; padding: 0 2px; }
-.qw-msg-me .qw-msg-header { flex-direction: row-reverse; }
-.qw-author-avatar { width: 18px; height: 18px; border-radius: 50%; object-fit: cover; }
-.qw-author-name { font-size: 11px; font-weight: 700; color: var(--header-primary, #f2f3f5); }
+.qw-messages-container { display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; }
+.qw-msg-row { display: flex; position: relative; flex-direction: column; width: 100%; }
+.qw-msg-row.qw-msg-has-header { margin-top: 10px; }
+.qw-msg-header { display: flex; position: absolute; left: 0; top: 8px; }
+.qw-msg-me .qw-msg-header { visibility: hidden; }
+.qw-author-avatar { width: 34px; height: 34px; border-radius: 50%; object-fit: cover; }
+.qw-author-name { display: none; }
 .qw-msg-wrapper { display: flex; width: 100%; }
 .qw-msg-me .qw-msg-wrapper { justify-content: flex-end; }
 .qw-msg-them .qw-msg-wrapper { justify-content: flex-start; }
+.qw-msg-them .qw-msg-wrapper { padding-left: 46px; box-sizing: border-box; }
 #quick-whisper-root,
 .qw-scroller,
 .qw-messages-container,
@@ -650,8 +1140,8 @@ const PLUGIN_STYLES = `
     user-drag: none !important;
 }
 .qw-msg-bubble {
-    max-width: 82%;
-    padding: 7px 11px;
+    max-width: 85%;
+    padding: 12px 16px;
     font-size: 13px;
     line-height: 1.42;
     word-break: break-word;
@@ -661,21 +1151,20 @@ const PLUGIN_STYLES = `
     box-shadow: none !important;
 }
 .qw-msg-them .qw-msg-bubble {
-    background: color-mix(in srgb, var(--background-secondary-alt, #2b2d31) 70%, transparent) !important;
-    backdrop-filter: blur(8px) !important;
-    border: 1px solid rgba(255, 255, 255, 0.07) !important;
-    color: var(--text-normal, #dbdee1) !important;
-    border-radius: 14px 14px 14px 3px;
+    background: color-mix(in srgb, var(--qw-profile-primary, #292a2e) 88%, var(--qw-profile-text, #fff) 12%) !important;
+    border: 1px solid rgba(255, 255, 255, 0.02) !important;
+    color: var(--qw-profile-text, #dbdee1) !important;
+    border-radius: 16px 16px 16px 5px;
     box-shadow: none !important;
 }
 .qw-msg-me .qw-msg-bubble {
-    background: linear-gradient(135deg, var(--profile-gradient-primary-color, var(--brand-500, #5865f2)), var(--profile-gradient-secondary-color, var(--brand-600, #4752c4))) !important;
+    background: #99578d !important;
     color: #ffffff !important;
-    border-radius: 14px 14px 3px 14px;
+    border-radius: 16px 16px 5px 16px;
     box-shadow: none !important;
 }
 .qw-msg-text { unicode-bidi: plaintext; text-align: start; }
-.qw-msg-time { font-size: 10px; opacity: 0.7; margin-top: 3px; text-align: end; }
+.qw-msg-time { font-size: 10px; opacity: 0.65; margin-top: 5px; text-align: start; }
 .qw-reply-banner { display: flex; gap: 4px; font-size: 11px; padding-bottom: 4px; margin-bottom: 4px; border-bottom: 1px solid rgba(255, 255, 255, 0.12); opacity: 0.85; }
 .qw-reply-author { font-weight: 600; }
 .qw-reply-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px; }
@@ -734,50 +1223,49 @@ const PLUGIN_STYLES = `
     display: flex !important;
     flex-direction: column !important;
     gap: 6px !important;
-    margin-top: 8px !important;
-    background: rgba(0, 0, 0, 0.22) !important;
-    backdrop-filter: blur(16px) saturate(180%) !important;
-    -webkit-backdrop-filter: blur(16px) saturate(180%) !important;
-    border: 1px solid rgba(255, 255, 255, 0.08) !important;
-    border-radius: 12px !important;
-    padding: 6px 10px !important;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+    margin: 12px 18px 20px !important;
+    flex-shrink: 0;
+    background: color-mix(in srgb, var(--qw-profile-primary, #25262a) 76%, transparent) !important;
+    border: 1px solid color-mix(in srgb, var(--qw-profile-text, #fff) 12%, transparent) !important;
+    border-radius: 28px !important;
+    padding: 8px 10px !important;
+    box-shadow: none !important;
     transition: all 0.2s ease !important;
     box-sizing: border-box !important;
-    width: 100% !important;
+    width: calc(100% - 36px) !important;
 }
 .qw-composer:focus-within {
-    background: rgba(0, 0, 0, 0.32) !important;
-    border-color: var(--profile-gradient-primary-color, var(--brand-500, #5865f2)) !important;
-    box-shadow: 0 0 0 1px var(--profile-gradient-primary-color, var(--brand-500, #5865f2)), 0 4px 14px rgba(0, 0, 0, 0.25) !important;
+    border-color: #484950 !important;
+    box-shadow: none !important;
 }
 .qw-input-row {
     display: flex !important;
-    align-items: flex-end !important;
+    align-items: center !important;
     gap: 6px !important;
     width: 100% !important;
 }
 .qw-input {
     flex: 1;
+    min-width: 0;
     background: transparent;
     border: none;
     outline: none;
-    color: var(--text-normal, #dbdee1);
+    color: var(--qw-profile-text, #dbdee1);
     font-family: inherit;
     font-size: 13px;
     resize: none;
     max-height: 90px;
     line-height: 1.4;
-    padding: 4px 0;
+    padding: 10px 6px;
     unicode-bidi: plaintext;
     text-align: start;
     box-sizing: border-box;
 }
-.qw-input::placeholder { color: var(--text-muted, #949ba4); }
+.qw-input::placeholder { color: var(--qw-profile-muted, #949ba4); }
 .qw-composer-action-btn {
     background: transparent !important;
     border: none !important;
-    color: var(--interactive-normal, #b5bac1) !important;
+    color: var(--qw-profile-text, #b5bac1) !important;
     cursor: pointer !important;
     padding: 4px !important;
     border-radius: 50% !important;
@@ -799,7 +1287,7 @@ const PLUGIN_STYLES = `
     background: transparent !important;
     border: none !important;
     cursor: pointer !important;
-    color: var(--profile-gradient-primary-color, var(--brand-500, #5865f2)) !important;
+    color: #c38bb7 !important;
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
@@ -946,18 +1434,13 @@ const PLUGIN_STYLES = `
     filter: invert(0.9) hue-rotate(180deg);
 }
 .qw-floating-gear-btn {
-    position: absolute !important;
-    top: 12px !important;
-    left: 12px !important;
-    right: auto !important;
+    position: static !important;
     width: 32px !important;
     height: 32px !important;
     min-width: 32px !important;
     min-height: 32px !important;
     border-radius: 50% !important;
-    background: rgba(0, 0, 0, 0.55) !important;
-    backdrop-filter: blur(8px) !important;
-    -webkit-backdrop-filter: blur(8px) !important;
+    background: color-mix(in srgb, var(--qw-profile-primary, #151619) 70%, transparent) !important;
     border: 1px solid rgba(255, 255, 255, 0.12) !important;
     color: var(--interactive-normal, #b5bac1) !important;
     cursor: pointer !important;
@@ -966,13 +1449,15 @@ const PLUGIN_STYLES = `
     justify-content: center !important;
     z-index: 1000 !important;
     transition: transform 0.25s ease, background 0.2s ease, color 0.2s ease !important;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35) !important;
+    box-shadow: none !important;
     padding: 0 !important;
 }
+.qw-header-controls .qw-top-close-btn { position: static !important; background: color-mix(in srgb, var(--qw-profile-primary, #151619) 70%, transparent) !important; }
+.qw-header-controls button { color: var(--qw-profile-text, #dbdee1) !important; }
+[data-qw-managed="true"] > .qw-top-close-btn { position: absolute; top: 16px; right: 14px; }
 .qw-floating-gear-btn:hover {
     color: #ffffff !important;
     background: rgba(0, 0, 0, 0.8) !important;
-    transform: rotate(45deg) scale(1.08) !important;
 }
 .qw-floating-gear-btn svg {
     width: 16px !important;
@@ -981,13 +1466,17 @@ const PLUGIN_STYLES = `
     display: block !important;
 }
 #qw-floating-settings {
+    --text-normal: var(--qw-profile-text, #dbdee1);
+    --text-muted: var(--qw-profile-muted, #b5bac1);
+    --header-secondary: var(--qw-profile-muted, #b5bac1);
+    --interactive-normal: var(--qw-profile-text, #b5bac1);
     position: fixed !important;
     width: 310px !important;
-    background: rgba(22, 23, 27, 0.94) !important;
+    background: linear-gradient(135deg, color-mix(in srgb, var(--qw-profile-primary, #16171b) 94%, transparent), color-mix(in srgb, var(--qw-profile-secondary, #16171b) 94%, transparent)) !important;
     backdrop-filter: blur(20px) !important;
     -webkit-backdrop-filter: blur(20px) !important;
-    border: 1px solid rgba(255, 255, 255, 0.12) !important;
-    border-radius: 14px !important;
+    border: 1px solid var(--qw-settings-border, color-mix(in srgb, var(--qw-profile-text, #fff) 16%, transparent)) !important;
+    border-radius: var(--qw-settings-radius, 14px) !important;
     padding: 14px 16px !important;
     box-shadow: 0 16px 48px rgba(0, 0, 0, 0.65) !important;
     z-index: 100005 !important;
@@ -1003,12 +1492,12 @@ const PLUGIN_STYLES = `
     align-items: center !important;
     justify-content: space-between !important;
     padding-bottom: 8px !important;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+    border-bottom: 1px solid color-mix(in srgb, var(--qw-profile-text, #fff) 14%, transparent) !important;
 }
 .qw-settings-title {
     font-size: 14px !important;
     font-weight: 700 !important;
-    color: #ffffff !important;
+    color: var(--text-normal, #ffffff) !important;
     display: flex !important;
     align-items: center !important;
     gap: 6px !important;
@@ -1023,8 +1512,8 @@ const PLUGIN_STYLES = `
     border-radius: 4px !important;
 }
 .qw-settings-close:hover {
-    color: #ffffff !important;
-    background: rgba(255, 255, 255, 0.1) !important;
+    color: var(--text-normal, #ffffff) !important;
+    background: color-mix(in srgb, var(--qw-profile-text, #fff) 12%, transparent) !important;
 }
 .qw-set-item {
     display: flex !important;
@@ -1053,7 +1542,7 @@ const PLUGIN_STYLES = `
 }
 .qw-color-native {
     -webkit-appearance: none !important;
-    border: 1px solid rgba(255, 255, 255, 0.15) !important;
+    border: 1px solid color-mix(in srgb, var(--qw-profile-text, #fff) 18%, transparent) !important;
     border-radius: 6px !important;
     width: 28px !important;
     height: 24px !important;
@@ -1064,7 +1553,7 @@ const PLUGIN_STYLES = `
 .qw-color-native::-webkit-color-swatch-wrapper { padding: 0 !important; }
 .qw-color-native::-webkit-color-swatch { border: none !important; border-radius: 5px !important; }
 .qw-set-reset {
-    background: rgba(255, 255, 255, 0.08) !important;
+    background: color-mix(in srgb, var(--qw-profile-text, #fff) 9%, transparent) !important;
     border: none !important;
     color: var(--text-normal, #dbdee1) !important;
     font-size: 11px !important;
@@ -1073,12 +1562,12 @@ const PLUGIN_STYLES = `
     cursor: pointer !important;
 }
 .qw-set-reset:hover {
-    background: rgba(255, 255, 255, 0.15) !important;
-    color: #ffffff !important;
+    background: color-mix(in srgb, var(--qw-profile-text, #fff) 16%, transparent) !important;
+    color: var(--text-normal, #ffffff) !important;
 }
 .qw-slider {
     width: 100% !important;
-    accent-color: var(--brand-500, #5865f2) !important;
+    accent-color: color-mix(in srgb, var(--qw-profile-text, #5865f2) 60%, var(--qw-profile-primary, #5865f2)) !important;
     cursor: pointer !important;
 }
 .qw-switch {
@@ -1092,7 +1581,7 @@ const PLUGIN_STYLES = `
     position: absolute !important;
     cursor: pointer !important;
     inset: 0 !important;
-    background-color: #4e5058 !important;
+    background-color: color-mix(in srgb, var(--qw-profile-text, #4e5058) 24%, var(--qw-profile-primary, #4e5058)) !important;
     transition: .2s !important;
     border-radius: 20px !important;
 }
@@ -1103,12 +1592,12 @@ const PLUGIN_STYLES = `
     width: 14px !important;
     left: 3px !important;
     bottom: 3px !important;
-    background-color: white !important;
+    background-color: var(--qw-profile-text, white) !important;
     transition: .2s !important;
     border-radius: 50% !important;
 }
 .qw-switch input:checked + .qw-switch-slider {
-    background-color: #23a55a !important;
+    background-color: color-mix(in srgb, var(--qw-profile-text, #23a55a) 60%, var(--qw-profile-primary, #23a55a)) !important;
 }
 .qw-switch input:checked + .qw-switch-slider:before {
     transform: translateX(16px) !important;
@@ -1266,32 +1755,55 @@ async function sendMultipartMessage(channelId, text, file, isVoice = false, dura
 }
 
 let activeSettingsModal = null;
+let activeSettingsOwner = null;
+let activeSettingsFlush = null;
+let activeSettingsDragging = false;
+let activeSettingsDragPosition = null;
 
 function closeFloatingSettings() {
     if (activeSettingsModal) {
+        const flush = activeSettingsFlush;
+        activeSettingsFlush = null;
+        activeSettingsDragging = false;
+        activeSettingsDragPosition = null;
+        flush?.();
         window.removeEventListener("pointerdown", handleGlobalSettingsCapture, true);
         window.removeEventListener("mousedown", handleGlobalSettingsCapture, true);
         activeSettingsModal.remove();
         activeSettingsModal = null;
+        activeSettingsOwner = null;
     }
 }
 
 function handleGlobalSettingsCapture(e) {
     if (!activeSettingsModal) return;
-    if (e.target && (e.target.id === "qw-modal-close" || e.target.closest?.("#qw-modal-close"))) {
-        e.preventDefault();
-        e.stopPropagation();
-        closeFloatingSettings();
-        return;
-    }
     if (activeSettingsModal.contains(e.target) || e.target.closest?.("#qw-floating-settings, .qw-floating-gear-btn")) {
         return;
     }
     closeFloatingSettings();
 }
 
+function syncSettingsTheme(owner, modal) {
+    const parts = getNativeProfileParts(owner);
+    syncChatTheme(parts.frame, modal);
+    const style = getComputedStyle(parts.surface);
+    const variables = {
+        "--qw-settings-radius": style.borderTopLeftRadius,
+        "--qw-settings-border": parseFloat(style.borderTopWidth) > 0 && style.borderTopColor !== "rgba(0, 0, 0, 0)"
+            ? style.borderTopColor : "color-mix(in srgb, var(--qw-profile-text) 16%, transparent)"
+    };
+    for (const [name, value] of Object.entries(variables)) {
+        if (modal.style.getPropertyValue(name) !== value) modal.style.setProperty(name, value);
+    }
+}
+
 function positionFloatingSettings(modal, popout) {
     if (!modal || !popout) return;
+    // Keep the range under the pointer while its value resizes the profile.
+    if (modal === activeSettingsModal && activeSettingsDragging) {
+        if (activeSettingsDragPosition) positionOwnedOverlay(modal, activeSettingsDragPosition.left, activeSettingsDragPosition.top);
+        return;
+    }
     const outer = getPopoutOuter(popout) || popout;
     const pRect = outer.getBoundingClientRect();
     const modalWidth = 310;
@@ -1309,9 +1821,7 @@ function positionFloatingSettings(modal, popout) {
 
     let top = Math.max(15, Math.min(window.innerHeight - modalHeight - 15, pRect.top));
 
-    modal.style.position = "fixed";
     positionOwnedOverlay(modal, Math.round(left), Math.round(top));
-    modal.style.zIndex = "100005";
 }
 
 function toggleFloatingSettings(gearBtn, popout) {
@@ -1338,7 +1848,7 @@ function toggleFloatingSettings(gearBtn, popout) {
             <div class="qw-set-row-inline">
                 <span class="qw-set-label">My Bubble Color:</span>
                 <div class="qw-color-ctrl">
-                    <input type="color" class="qw-color-native" id="qw-my-color-picker" value="${cfg.myColor && /^#[0-9a-f]{6}$/i.test(cfg.myColor) ? cfg.myColor : '#5865f2'}" title="Color Picker" />
+                    <input type="color" class="qw-color-native" id="qw-my-color-picker" value="${cfg.myColor && /^#[0-9a-f]{6}$/i.test(cfg.myColor) ? cfg.myColor : '#613f45'}" title="Color Picker" />
                     <button class="qw-set-reset" id="qw-my-color-reset" title="Reset to default">Default</button>
                 </div>
             </div>
@@ -1347,7 +1857,7 @@ function toggleFloatingSettings(gearBtn, popout) {
             <div class="qw-set-row-inline">
                 <span class="qw-set-label">Their Bubble Color:</span>
                 <div class="qw-color-ctrl">
-                    <input type="color" class="qw-color-native" id="qw-their-color-picker" value="${cfg.theirColor && /^#[0-9a-f]{6}$/i.test(cfg.theirColor) ? cfg.theirColor : '#2b2d31'}" title="Color Picker" />
+                    <input type="color" class="qw-color-native" id="qw-their-color-picker" value="${cfg.theirColor && /^#[0-9a-f]{6}$/i.test(cfg.theirColor) ? cfg.theirColor : '#99578d'}" title="Color Picker" />
                     <button class="qw-set-reset" id="qw-their-color-reset" title="Reset to default">Default</button>
                 </div>
             </div>
@@ -1357,14 +1867,21 @@ function toggleFloatingSettings(gearBtn, popout) {
                 <span class="qw-set-label">Profile Width:</span>
                 <span class="qw-set-val" id="qw-width-val">${cfg.profileWidth}px</span>
             </div>
-            <input type="range" class="qw-slider" id="qw-width-slider" min="280" max="750" step="5" value="${cfg.profileWidth}" />
+            <input type="range" class="qw-slider" id="qw-width-slider" min="180" max="750" step="5" value="${cfg.profileWidth}" />
         </div>
         <div class="qw-set-item">
             <div class="qw-set-row-inline">
-                <span class="qw-set-label">Chat Height:</span>
-                <span class="qw-set-val" id="qw-height-val">${cfg.chatHeight}px</span>
+                <span class="qw-set-label">Chat Width:</span>
+                <span class="qw-set-val" id="qw-chat-width-val">${cfg.chatWidth}px</span>
             </div>
-            <input type="range" class="qw-slider" id="qw-height-slider" min="150" max="450" step="10" value="${cfg.chatHeight}" />
+            <input type="range" class="qw-slider" id="qw-chat-width-slider" min="240" max="620" step="10" value="${cfg.chatWidth}" />
+        </div>
+        <div class="qw-set-item">
+            <div class="qw-set-row-inline">
+                <span class="qw-set-label">Profile & Chat Height:</span>
+                <span class="qw-set-val" id="qw-height-val">${cfg.profileHeight}px</span>
+            </div>
+            <input type="range" class="qw-slider" id="qw-height-slider" min="320" max="900" step="10" value="${cfg.profileHeight}" />
         </div>
         <div class="qw-set-item">
             <div class="qw-set-row-inline">
@@ -1382,19 +1899,15 @@ function toggleFloatingSettings(gearBtn, popout) {
                 </label>
             </div>
         </div>
-        <div class="qw-set-item">
-            <div class="qw-set-row-inline">
-                <span class="qw-set-label">Auto-focus Input:</span>
-                <label class="qw-switch">
-                    <input type="checkbox" id="qw-focus-toggle" ${cfg.autoFocus ? "checked" : ""} />
-                    <span class="qw-switch-slider"></span>
-                </label>
-            </div>
-        </div>
     `;
 
-    getNativeOverlayHost(getPopoutOuter(popout)).appendChild(modal);
+    const owner = getPopoutOuter(popout) || popout;
+    // A fixed panel can sit beside the card while remaining inside its native
+    // event boundary. Its controls then count as clicks inside the profile.
+    getNativeChatHost(getNativeProfileParts(owner)).appendChild(modal);
     activeSettingsModal = modal;
+    activeSettingsOwner = owner;
+    syncSettingsTheme(owner, modal);
     positionFloatingSettings(modal, popout);
 
     const myColor = modal.querySelector("#qw-my-color-picker");
@@ -1403,28 +1916,87 @@ function toggleFloatingSettings(gearBtn, popout) {
     const theirReset = modal.querySelector("#qw-their-color-reset");
     const widthSlider = modal.querySelector("#qw-width-slider");
     const widthVal = modal.querySelector("#qw-width-val");
+    const chatWidthSlider = modal.querySelector("#qw-chat-width-slider");
+    const chatWidthVal = modal.querySelector("#qw-chat-width-val");
     const heightSlider = modal.querySelector("#qw-height-slider");
     const heightVal = modal.querySelector("#qw-height-val");
     const fontSlider = modal.querySelector("#qw-font-slider");
     const fontVal = modal.querySelector("#qw-font-val");
     const headersToggle = modal.querySelector("#qw-headers-toggle");
-    const focusToggle = modal.querySelector("#qw-focus-toggle");
+
+    let settingsFrame = 0;
+    let persistTimer = 0;
+    let visualDirty = false;
+    let persistPending = false;
+
+    function applySettingChanges() {
+        settingsFrame = 0;
+        if (!visualDirty) return;
+        visualDirty = false;
+        if (!pluginRunning || !modal.isConnected) return;
+        updateCustomStyles();
+        positionFloatingSettings(modal, owner);
+    }
+
+    function commitSettings() {
+        cancelAnimationFrame(settingsFrame);
+        settingsFrame = 0;
+        applySettingChanges();
+        clearTimeout(persistTimer);
+        persistTimer = 0;
+        if (persistPending) {
+            persistPending = false;
+            persistStoredConfig();
+        }
+    }
+
+    function finishSliderDrag() {
+        if (!activeSettingsDragging) return;
+        activeSettingsDragging = false;
+        activeSettingsDragPosition = null;
+        commitSettings();
+        positionFloatingSettings(modal, owner);
+    }
 
     function updateSetting(key, val) {
-        if (settings?.store) settings.store[key] = val;
-        saveStoredConfig({ [key]: val });
-        updateCustomStyles();
+        // Input is immediate in memory; expensive layout is limited to one
+        // paint and reactive/disk writes wait until the gesture is complete.
+        saveStoredConfig({ [key]: val }, false);
+        visualDirty = true;
+        persistPending = true;
+        if (!settingsFrame) settingsFrame = requestAnimationFrame(applySettingChanges);
+        clearTimeout(persistTimer);
+        if (!activeSettingsDragging) persistTimer = setTimeout(commitSettings, 180);
     }
+
+    modal.addEventListener("pointerdown", event => {
+        if (event.target.matches?.('input[type="range"]')) {
+            activeSettingsDragging = true;
+            const rect = modal.getBoundingClientRect();
+            activeSettingsDragPosition = { left: rect.left, top: rect.top };
+            clearTimeout(persistTimer);
+        }
+    });
+    modal.addEventListener("change", commitSettings);
+    window.addEventListener("pointerup", finishSliderDrag, true);
+    window.addEventListener("pointercancel", finishSliderDrag, true);
+    window.addEventListener("blur", finishSliderDrag);
+    activeSettingsFlush = () => {
+        commitSettings();
+        window.removeEventListener("pointerup", finishSliderDrag, true);
+        window.removeEventListener("pointercancel", finishSliderDrag, true);
+        window.removeEventListener("blur", finishSliderDrag);
+    };
 
     myColor.addEventListener("input", e => updateSetting("myColor", e.target.value));
     myReset.addEventListener("click", () => {
-        myColor.value = "#5865f2";
+        myColor.value = "#613f45";
         updateSetting("myColor", "");
     });
 
     theirColor.addEventListener("input", e => updateSetting("theirColor", e.target.value));
     theirReset.addEventListener("click", () => {
-        theirColor.value = "#2b2d31";
+        theirColor.value = "#99578d";
         updateSetting("theirColor", "");
     });
 
@@ -1434,10 +2006,16 @@ function toggleFloatingSettings(gearBtn, popout) {
         updateSetting("profileWidth", v);
     });
 
+    chatWidthSlider.addEventListener("input", e => {
+        const v = parseInt(e.target.value, 10);
+        chatWidthVal.textContent = `${v}px`;
+        updateSetting("chatWidth", v);
+    });
+
     heightSlider.addEventListener("input", e => {
         const v = parseInt(e.target.value, 10);
         heightVal.textContent = `${v}px`;
-        updateSetting("chatHeight", v);
+        updateSetting("profileHeight", v);
     });
 
     fontSlider.addEventListener("input", e => {
@@ -1447,7 +2025,6 @@ function toggleFloatingSettings(gearBtn, popout) {
     });
 
     headersToggle.addEventListener("change", e => updateSetting("showHeaders", e.target.checked));
-    focusToggle.addEventListener("change", e => updateSetting("autoFocus", e.target.checked));
 
     modal.querySelector("#qw-modal-close").addEventListener("click", e => {
         e.preventDefault();
@@ -1465,7 +2042,13 @@ function toggleFloatingSettings(gearBtn, popout) {
 function attachFloatingGear(outer) {
     if (!outer) return;
     const target = getPopoutOuter(outer) || outer;
-    if (target.querySelector(".qw-floating-gear-btn")) return;
+    const controls = activeSessions.get(getUserId(getNativeProfileFrame(target)))?.session.ui?.querySelector(".qw-header-controls") || target.querySelector(".qw-header-controls");
+    if (!controls) return;
+    const existingGear = target.querySelector(".qw-floating-gear-btn") || controls.querySelector(".qw-floating-gear-btn");
+    if (existingGear) {
+        if (existingGear.parentElement !== controls) controls.appendChild(existingGear);
+        return;
+    }
     try {
         if (window.getComputedStyle(target).position === "static") {
             target.style.position = "relative";
@@ -1486,11 +2069,20 @@ function attachFloatingGear(outer) {
         e.stopPropagation();
         toggleFloatingSettings(gearBtn, target);
     });
-    target.appendChild(gearBtn);
+    controls.appendChild(gearBtn);
 }
 
 function attachTopCloseBtn(outer, userId) {
-    if (!outer || outer.querySelector(".qw-top-close-btn")) return;
+    if (!outer) return;
+    const controls = activeSessions.get(String(userId))?.session.ui?.querySelector(".qw-header-controls") || outer.querySelector(".qw-header-controls");
+    const existing = outer.querySelector(".qw-top-close-btn") || controls?.querySelector(".qw-top-close-btn");
+    if (existing) {
+        if (controls && existing.parentElement !== controls) {
+            existing.style.cssText = "";
+            controls.appendChild(existing);
+        }
+        return;
+    }
     const closeBtn = document.createElement("button");
     closeBtn.className = "qw-top-close-btn";
     closeBtn.title = "Close Profile";
@@ -1502,16 +2094,8 @@ function attachTopCloseBtn(outer, userId) {
         event.stopPropagation();
         closeSession(userId);
     });
-    // Append only the extra control; leave every native header button in place.
-    const moreButton = outer.querySelector('[aria-label="More"], [aria-label^="More "], [aria-label*="المزيد"], [aria-label*="خيارات"]');
-    let row = moreButton?.parentElement;
-    while (row && row !== outer && row.querySelectorAll('button, [role="button"]').length < 2) row = row.parentElement;
-    if (!row || row === outer || row.querySelector('[class*="banner_"]')) row = outer.querySelector('[class*="headerButtons_"]');
-    if (row) row.appendChild(closeBtn);
-    else {
-        closeBtn.style.cssText = "position: absolute; top: 52px; left: 12px;";
-        outer.appendChild(closeBtn);
-    }
+    // Keep native profile actions in place; the pair closes from its right edge.
+    (controls || outer).appendChild(closeBtn);
 }
 
 function escapeHtml(str) {
@@ -1738,47 +2322,60 @@ function makeDraggable(popout, handle) {
     const downEvent = typeof PointerEvent === "function" ? "pointerdown" : "mousedown";
 
     function onStart(event) {
-        if (event.button !== 0 || isCurrentlyDragging) return;
+        if (event.button !== 0) return;
         if (event.target.closest('[data-qw-draggable="true"]') !== handle) return;
-        if (event.target.closest('button, a, input, textarea, select, [role="button"], [role="menuitem"], [aria-haspopup], [contenteditable="true"], .qw-root')) return;
+        const interactive = event.target.closest('button, a, input, textarea, select, [role="button"], [role="menuitem"], [aria-haspopup], [contenteditable="true"]');
+        const avatarTarget = handle.matches('[class*="avatar"]') && interactive?.matches('[role="button"]:not(button):not(a)') && (interactive.contains(handle) || handle.contains(interactive));
+        if (interactive && !avatarTarget && (interactive !== handle || handle.matches('button, a, input, textarea, select, [contenteditable="true"]'))) return;
         if (activeDragCleanup) activeDragCleanup();
         const startRect = outer.getBoundingClientRect();
         const startX = event.clientX, startY = event.clientY;
         const pointerId = event.pointerId;
-        const focusedComposer = outer.contains(document.activeElement) && document.activeElement?.matches('.qw-input, [contenteditable="true"]') ? document.activeElement : null;
+        const chat = [...activeSessions.values()].find(data => data.outer === outer)?.session;
+        const focusedComposer = (outer.contains(document.activeElement) || chat?.ui?.contains(document.activeElement)) && document.activeElement?.matches('.qw-input, [contenteditable="true"]') ? document.activeElement : null;
         const selection = focusedComposer && typeof focusedComposer.selectionStart === "number" ? {
             start: focusedComposer.selectionStart, end: focusedComposer.selectionEnd, direction: focusedComposer.selectionDirection
         } : null;
         let moved = false;
         let cleaned = false;
+        let moveFrame = 0, pendingMove = null;
         const previousSelection = document.body.style.userSelect;
         // Header dragging should keep the current composer focused, including
         // its draft and caret. Inputs and native buttons were excluded above.
-        if (focusedComposer) event.preventDefault();
+        event.preventDefault();
+        event.stopPropagation();
+        isCurrentlyDragging = true;
+        setNativeStyle(outer, handle, "cursor", "grabbing");
+        document.body.style.userSelect = "none";
+        if (pointerId !== undefined) { try { handle.setPointerCapture(pointerId); } catch (e) {} }
+
+        function flushMove() {
+            moveFrame = 0;
+            if (cleaned || !pendingMove || !outer.isConnected) return;
+            const { x, y } = pendingMove;
+            pendingMove = null;
+            const left = Math.max(10, Math.min(window.innerWidth - startRect.width - 10, startRect.left + x - startX));
+            const top = Math.max(10, Math.min(window.innerHeight - startRect.height - 10, startRect.top + y - startY));
+            setPopoutScreenPosition(outer, left, top);
+            chat?.layout?.refresh(false);
+        }
 
         function onMove(moveEvent) {
             if (cleaned) return;
             if (pointerId !== undefined && moveEvent.pointerId !== pointerId) return;
             if (moveEvent.buttons === 0) { endDrag(); return; }
-            const dx = moveEvent.clientX - startX, dy = moveEvent.clientY - startY;
-            if (!moved && Math.hypot(dx, dy) < 3) return;
-            if (!moved) {
-                moved = true;
-                isCurrentlyDragging = true;
-                setNativeStyle(outer, handle, "cursor", "grabbing");
-                document.body.style.userSelect = "none";
-                if (pointerId !== undefined) { try { handle.setPointerCapture(pointerId); } catch (e) {} }
-            }
+            if (moveEvent.clientX !== startX || moveEvent.clientY !== startY) moved = true;
             moveEvent.preventDefault();
             moveEvent.stopPropagation();
-            const left = Math.max(0, Math.min(window.innerWidth - startRect.width, startRect.left + dx));
-            const top = Math.max(0, Math.min(window.innerHeight - 60, startRect.top + dy));
-            setPopoutScreenPosition(outer, left, top);
+            pendingMove = { x: moveEvent.clientX, y: moveEvent.clientY };
+            if (!moveFrame) moveFrame = requestAnimationFrame(flushMove);
         }
 
         function endDrag(upEvent) {
             if (cleaned) return;
             if (upEvent?.pointerId !== undefined && pointerId !== undefined && upEvent.pointerId !== pointerId) return;
+            if (moveFrame) cancelAnimationFrame(moveFrame);
+            flushMove();
             cleanupDrag();
             if (!moved) return;
             const rect = outer.getBoundingClientRect();
@@ -1804,6 +2401,8 @@ function makeDraggable(popout, handle) {
         function cleanupDrag() {
             if (cleaned) return;
             cleaned = true;
+            if (moveFrame) cancelAnimationFrame(moveFrame);
+            pendingMove = null;
             window.removeEventListener("pointermove", onMove, true);
             window.removeEventListener("mousemove", onMove, true);
             window.removeEventListener("pointerup", endDrag, true);
@@ -1840,6 +2439,8 @@ function makeDraggable(popout, handle) {
 function attachDraggables(popout) {
     if (!popout) return;
     const root = getPopoutOuter(popout) || popout;
+    const session = [...activeSessions.values()].find(data => data.outer === root)?.session;
+    makeDraggable(root, session?.ui?.querySelector(".qw-header"));
 
     const headerHandles = root.querySelectorAll('[class*="bannerSVGWrapper_"], [class*="banner_"], [class*="bannerPremium_"], [class*="headerTop_"], [class*="headerNormal_"], [class*="topSection_"]');
     headerHandles.forEach(h => makeDraggable(root, h));
@@ -1855,7 +2456,7 @@ function createMessageElement(msg, currentUserId, prevMsg) {
     const isMe = String(msg.author?.id) === String(currentUserId);
     const isSameAuthor = prevMsg && String(prevMsg.author?.id) === String(msg.author?.id);
     const timeDiff = prevMsg ? (new Date(msg.timestamp) - new Date(prevMsg.timestamp)) : Infinity;
-    const showHeader = !isSameAuthor || timeDiff > 180000;
+    const showHeader = !isSameAuthor || timeDiff > 180000 || !isSameMessageDay(msg, prevMsg);
 
     const row = document.createElement("div");
     row.className = `qw-msg-row ${isMe ? "qw-msg-me" : "qw-msg-them"} ${showHeader ? "qw-msg-has-header" : "qw-msg-grouped"}`;
@@ -1864,10 +2465,11 @@ function createMessageElement(msg, currentUserId, prevMsg) {
     let headerHtml = "";
     if (showHeader) {
         const avatarUrl = getAvatarUrl(msg.author);
-        const authorName = escapeHtml(msg.author?.global_name || msg.author?.username || (isMe ? "You" : "User"));
+        const nativeAuthor = getStore("UserStore", "getCurrentUser")?.getUser?.(msg.author?.id);
+        const authorName = escapeHtml(msg.author?.global_name || msg.author?.globalName || nativeAuthor?.globalName || msg.author?.username || (isMe ? "You" : "User"));
         headerHtml = `
             <div class="qw-msg-header">
-                <img src="${avatarUrl}" class="qw-author-avatar" loading="lazy" />
+                <img src="${avatarUrl}" class="qw-author-avatar" loading="lazy" alt="${authorName}" title="${authorName}" />
                 <span class="qw-author-name">${authorName}</span>
             </div>
         `;
@@ -1916,7 +2518,7 @@ function createMessageElement(msg, currentUserId, prevMsg) {
                 img.title = "Left-click: View | Middle-click: Open in Browser";
                 img.addEventListener("click", e => {
                     e.stopPropagation();
-                    openLightbox(att.url, img.closest('[data-qw-managed="true"]'));
+                    openLightbox(att.url, getChatProfileOwner(img));
                 });
                 img.addEventListener("auxclick", e => {
                     if (e.button === 1) {
@@ -1957,12 +2559,42 @@ function createMessageElement(msg, currentUserId, prevMsg) {
     return row;
 }
 
+function isSameMessageDay(message, previous) {
+    return previous && new Date(message.timestamp).toDateString() === new Date(previous.timestamp).toDateString();
+}
+
+function createMessageDateDivider(message) {
+    const date = new Date(message.timestamp);
+    if (!Number.isFinite(date.getTime())) return null;
+    const today = new Date();
+    const yesterday = new Date();
+    yesterday.setDate(today.getDate() - 1);
+    const divider = document.createElement("div");
+    divider.className = "qw-date-divider";
+    divider.textContent = date.toDateString() === today.toDateString() ? "Today"
+        : date.toDateString() === yesterday.toDateString() ? "Yesterday"
+        : date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+    return divider;
+}
+
 function buildUI(username, onSend, onLoadOlder, userId = "") {
     const root = document.createElement("div");
     if (userId) root.id = `quick-whisper-root-${userId}`;
-    root.className = "qw-root";
+    root.className = "qw-root qw-chat-sidecar";
+    root.dataset.userId = userId;
+    root.setAttribute("role", "region");
+    root.setAttribute("aria-label", `Private chat with ${username}`);
 
     root.innerHTML = `
+        <div class="qw-chat-glass" aria-hidden="true"></div>
+        <div class="qw-header">
+            <div class="qw-header-spacer" aria-hidden="true"></div>
+            <div class="qw-header-controls">
+                <button class="qw-header-action" data-qw-native-action="call" aria-label="Call" title="Call" hidden><svg viewBox="0 0 24 24"><path d="M6.6 10.8a15.2 15.2 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.24c1.1.37 2.3.57 3.6.57a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1C10.6 21 3 13.4 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.3.2 2.5.57 3.6a1 1 0 0 1-.24 1L6.6 10.8Z"/></svg></button>
+                <button class="qw-header-action" data-qw-native-action="video" aria-label="Video call" title="Video call" hidden><svg viewBox="0 0 24 24"><path d="M4 5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3l6 4V6l-6 4V7a2 2 0 0 0-2-2H4Z"/></svg></button>
+                <button class="qw-header-action" data-qw-native-action="more" aria-label="More options" title="More options" hidden><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg></button>
+            </div>
+        </div>
         <div class="qw-scroller" id="qw-scroller">
             <div class="qw-loading-banner" id="qw-loading-banner" style="display: none;">Loading older...</div>
             <div class="qw-messages-container" id="qw-messages-container"></div>
@@ -1998,7 +2630,7 @@ function buildUI(username, onSend, onLoadOlder, userId = "") {
                         <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"></path>
                     </svg>
                 </button>
-                <textarea class="qw-input" id="qw-input" placeholder="Message @${escapeHtml(username)}" rows="1"></textarea>
+                <textarea class="qw-input" id="qw-input" aria-label="Message @${escapeHtml(username)}" placeholder="Message @${escapeHtml(username)}" rows="1"></textarea>
                 <button class="qw-composer-action-btn qw-mic-btn" id="qw-mic-btn" title="Record Voice Note">
                     <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
                         <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm-1-9c0-.55.45-1 1-1s1 .45 1 1v6c0 .55-.45 1-1 1s-1-.45-1-1V5zm6 6c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"></path>
@@ -2014,6 +2646,14 @@ function buildUI(username, onSend, onLoadOlder, userId = "") {
     `;
 
     const input = root.querySelector("#qw-input");
+    for (const button of root.querySelectorAll("[data-qw-native-action]")) {
+        button.addEventListener("click", event => {
+            event.preventDefault();
+            event.stopPropagation();
+            const outer = getChatProfileOwner(button);
+            if (outer) findNativeChatAction(outer, button.dataset.qwNativeAction)?.click();
+        });
+    }
     const sendBtn = root.querySelector("#qw-send-btn");
     const scroller = root.querySelector("#qw-scroller");
 
@@ -2233,6 +2873,7 @@ class WhisperSession {
         this.isLoadingOlder = false;
         this.hasMoreOlder = true;
         this.destroyed = false;
+        this.followLatest = true;
 
         const UserStore = getStore("UserStore", "getCurrentUser");
         const currentUser = UserStore?.getCurrentUser ? UserStore.getCurrentUser() : null;
@@ -2255,34 +2896,20 @@ class WhisperSession {
 
         if (!this.nativeFooter) return;
         const outer = getPopoutOuter(this.nativeFooter);
-        if (outer) {
-            outer.querySelectorAll(".qw-root").forEach(r => {
-                if (r !== this.ui) r.remove();
-            });
-        }
-
-        const parent = this.nativeFooter.parentNode;
-        if (!parent) return;
-
-        parent.querySelectorAll(".qw-root").forEach(r => {
-            if (r !== this.ui) r.remove();
-        });
-
-        parent.insertBefore(this.ui, this.nativeFooter);
+        if (!outer || !this.nativeFooter.parentNode) return;
         this.nativeFooterDisplay = [this.nativeFooter.style.getPropertyValue("display"), this.nativeFooter.style.getPropertyPriority("display")];
         this.nativeFooter.style.setProperty("display", "none", "important");
         this.nativeFooter.classList.add("qw-native-hidden");
+        this.layout = attachChatLayout(outer, this.ui);
 
-        const cfg = getEffectiveConfig();
-        const shouldFocus = cfg.autoFocus !== false;
-        const input = this.ui.querySelector("#qw-input");
-        if (input && shouldFocus) {
-            this.focusTimer = setTimeout(() => {
-                if (!this.destroyed && input.isConnected) input.focus();
-            }, 80);
-        }
-
-
+        this.focusComposer();
+        this.focusAnimation = requestAnimationFrame(() => this.focusComposer());
+        this.focusTimer = setTimeout(() => {
+            const active = document.activeElement;
+            if (!activeSettingsModal && (active === this.ui?.querySelector("#qw-input") || !active?.matches('input, textarea, button, [role="button"], [contenteditable="true"]'))) {
+                this.focusComposer();
+            }
+        }, 100);
 
         const closeBtn = this.ui.querySelector("#qw-close-profile-btn");
         if (closeBtn) {
@@ -2298,6 +2925,24 @@ class WhisperSession {
         this.container = this.ui.querySelector("#qw-messages-container");
         this.scroller = this.ui.querySelector("#qw-scroller");
         this.loadingBanner = this.ui.querySelector("#qw-loading-banner");
+        this.scroller.addEventListener("wheel", event => {
+            if (event.deltaY < 0) this.followLatest = false;
+        }, { passive: true });
+        this.scroller.addEventListener("touchstart", () => { this.followLatest = false; }, { passive: true });
+        this.scroller.addEventListener("pointerdown", event => {
+            if (event.target === this.scroller) this.followLatest = false;
+        });
+        this.scroller.addEventListener("scroll", () => {
+            if (this.scroller.scrollHeight - this.scroller.scrollTop - this.scroller.clientHeight < 40) this.followLatest = true;
+        });
+        this.container.addEventListener("load", () => {
+            if (this.followLatest) this.jumpToLatest();
+        }, true);
+        this.messageResizeObserver = typeof ResizeObserver === "function" ? new ResizeObserver(() => {
+            if (this.followLatest) this.jumpToLatest();
+        }) : null;
+        this.messageResizeObserver?.observe(this.container);
+        this.messageResizeObserver?.observe(this.scroller);
 
         this.container.addEventListener("click", e => {
             const link = e.target.closest("a.qw-link, a.qw-msg-file");
@@ -2376,7 +3021,7 @@ class WhisperSession {
             const res = await apiRequest("get", `/channels/${this.channelId}/messages`, { limit: 50 });
             if (this.destroyed) return;
             if (Array.isArray(res?.body)) {
-                const followLatest = !cached.length || this.scroller.scrollHeight - this.scroller.scrollTop - this.scroller.clientHeight < 40;
+                const followLatest = this.followLatest;
                 const previousTop = this.scroller.scrollTop;
                 this.messages = res.body.reverse();
                 this.messageMap.clear();
@@ -2389,39 +3034,67 @@ class WhisperSession {
         }
     }
 
+    focusComposer() {
+        if (this.destroyed || focusedProfileRequest !== String(this.userId)) return;
+        const input = this.ui?.querySelector("#qw-input");
+        if (input?.isConnected) input.focus({ preventScroll: true });
+    }
+
+    jumpToLatest() {
+        if (this.destroyed || !this.scroller?.isConnected) return;
+        const style = this.scroller.style;
+        const previous = [style.getPropertyValue("scroll-behavior"), style.getPropertyPriority("scroll-behavior")];
+        // Open immediately at the latest message, including late-loading media.
+        style.setProperty("scroll-behavior", "auto", "important");
+        this.scroller.scrollTop = this.scroller.scrollHeight;
+        if (previous[0]) style.setProperty("scroll-behavior", previous[0], previous[1]);
+        else style.removeProperty("scroll-behavior");
+    }
+
+    scrollToLatest() {
+        this.followLatest = true;
+        this.jumpToLatest();
+        cancelAnimationFrame(this.scrollAnimation);
+        this.scrollAnimation = requestAnimationFrame(() => this.jumpToLatest());
+    }
+
     renderAll(scrollToBottom = false) {
         if (this.destroyed || !this.container) return;
         this.container.innerHTML = "";
 
         let prev = null;
         for (const msg of this.messages) {
+            if (!isSameMessageDay(msg, prev)) {
+                const divider = createMessageDateDivider(msg);
+                if (divider) this.container.appendChild(divider);
+            }
             const el = createMessageElement(msg, this.currentUserId, prev);
             this.container.appendChild(el);
             prev = msg;
         }
 
         if (scrollToBottom && this.scroller) {
-            requestAnimationFrame(() => {
-                this.scroller.scrollTop = this.scroller.scrollHeight;
-            });
+            this.scrollToLatest();
         }
     }
 
     addMessage(msg) {
         if (this.destroyed || this.messageMap.has(msg.id)) return;
-        const followLatest = this.scroller && this.scroller.scrollHeight - this.scroller.scrollTop - this.scroller.clientHeight < 40;
+        const followLatest = this.followLatest || (this.scroller && this.scroller.scrollHeight - this.scroller.scrollTop - this.scroller.clientHeight < 40);
         this.messageMap.set(msg.id, msg);
 
         const prev = this.messages[this.messages.length - 1] || null;
         this.messages.push(msg);
 
         if (this.container) {
+            if (!isSameMessageDay(msg, prev)) {
+                const divider = createMessageDateDivider(msg);
+                if (divider) this.container.appendChild(divider);
+            }
             const el = createMessageElement(msg, this.currentUserId, prev);
             this.container.appendChild(el);
             if (followLatest) {
-                requestAnimationFrame(() => {
-                    this.scroller.scrollTop = this.scroller.scrollHeight;
-                });
+                this.scrollToLatest();
             }
         }
     }
@@ -2531,7 +3204,11 @@ class WhisperSession {
     destroy() {
         if (this.destroyed) return;
         this.destroyed = true;
+        cancelAnimationFrame(this.focusAnimation);
         clearTimeout(this.focusTimer);
+        cancelAnimationFrame(this.scrollAnimation);
+        this.messageResizeObserver?.disconnect();
+        this.layout?.destroy();
         const FluxDispatcher = getStore("FluxDispatcher", "dispatch", "subscribe");
         if (FluxDispatcher?.unsubscribe) {
             FluxDispatcher.unsubscribe("MESSAGE_CREATE", this.onFluxMessageCreate);
@@ -2678,7 +3355,7 @@ function handleUnreadDMItemClick(e, target, dmsContainer) {
     e.stopPropagation();
     e.stopImmediatePropagation();
     if (e.type !== "click") return;
-    if (openNativeProfile(userId, { channelId, anchor: target })) return;
+    if (openNativeProfile(userId, { channelId, guildId: null, anchor: target })) return;
     // Bootstrap from Discord's own profile when its lazy native renderer has
     // not been seen yet. This never navigates the conversation into the DM.
     const actions = getStore("UserProfileActions", "openUserProfileModal", "closeUserProfileModal");
@@ -2688,7 +3365,7 @@ function handleUnreadDMItemClick(e, target, dmsContainer) {
 function handleTriggerToggle(event) {
     if (event.button !== 0) return;
     const target = event.target;
-    if (!target?.closest || target.closest('[role="dialog"], [id^="popout_"], [role="menu"], #qw-lightbox, #qw-floating-settings')) return;
+    if (!target?.closest || target.closest('[role="dialog"], [id^="popout_"], .qw-chat-sidecar, [role="menu"], #qw-lightbox, #qw-floating-settings')) return;
     const dmsContainer = target.closest("#guild-list-unread-dms");
     if (dmsContainer) {
         handleUnreadDMItemClick(event, target, dmsContainer);
@@ -2732,9 +3409,9 @@ async function inspectNativeTextbox(textbox) {
     if (!owned || !isOwnedNativeProfile(outer, owned)) {
         const descriptor = captureNativeProfileDescriptor(outer, userId);
         if (descriptor) {
-            nativeProfileDescriptor ||= descriptor;
+            nativeProfileDescriptor ||= makeReusableNativeDescriptor(descriptor);
             const nativeClose = getNativePopoutClose(outer);
-            if (openNativeProfile(userId, { anchor: outer }, descriptor)) {
+            if (openNativeProfile(userId, { anchor: outer, nativeCapture: true, guildId: descriptor.props.guildId ?? null, profileChannelId: descriptor.props.channelId }, descriptor)) {
                 if (nativeClose) nativeClose();
                 return true;
             }
@@ -2755,16 +3432,13 @@ async function inspectNativeTextbox(textbox) {
         const label = textbox.getAttribute("aria-label") || "";
         const user = getStore("UserStore", "getCurrentUser")?.getUser?.(userId);
         const username = user?.username || label.match(/Message @(.+)/i)?.[1] || "user";
-        const attributes = new Map(["data-qw-managed", "data-qw-position-layer"].map(name => [name, outer.getAttribute(name)]));
+        const attributes = new Map(["data-qw-managed", "data-qw-position-layer", "data-qw-chat-side"].map(name => [name, outer.getAttribute(name)]));
         outer.dataset.qwManaged = "true";
         outer.dataset.qwPositionLayer = "true";
-        const chatHost = nativeFooter.parentElement;
-        const hadHostClass = chatHost.classList.contains("qw-chat-host");
-        chatHost.classList.add("qw-chat-host");
         positionProfilePopout(outer, sessionStack.length);
         const session = new WhisperSession(nativeFooter, userId, channelId, username);
         const onPointerDown = () => bringToFront(userId);
-        activeSessions.set(userId, { userId, outer, session, attributes, nativeClose: getNativePopoutClose(outer), onPointerDown, chatHost, hadHostClass });
+        activeSessions.set(userId, { userId, outer, session, attributes, nativeClose: getNativePopoutClose(outer), onPointerDown });
         sessionStack.push(userId);
         outer.addEventListener("pointerdown", onPointerDown, true);
         attachDraggables(outer);
@@ -2816,7 +3490,7 @@ function scan() {
         if (!outer.isConnected) pendingNativeMounts.delete(outer);
     }
     for (const [uid, data] of [...activeSessions]) {
-        if (!data.outer.isConnected || !data.session.ui?.isConnected) {
+        if (!data.outer.isConnected || !data.session.ui?.isConnected || !data.session.nativeFooter?.isConnected) {
             cleanupNativeSession(uid);
             continue;
         }
@@ -2841,12 +3515,14 @@ const plugin = _definePlugin({
     name: "MBDM",
     description: "Mini DM client in user profiles",
     authors: [{ name: "MBdr", id: 0n }],
-    settings,
     startAt: (typeof StartAt !== "undefined" && StartAt?.WebpackReady) ? StartAt.WebpackReady : "WebpackReady",
     enabledByDefault: true,
 
     start() {
         pluginRunning = true;
+        if (getStoredConfig().nativeSplitLayoutVersion !== 1) {
+            saveStoredConfig({ nativeSplitLayoutVersion: 1, ...DEFAULT_CONFIG });
+        }
         injectStyles();
         enforcePopoutWidth();
         observer = new MutationObserver(() => {
@@ -2863,6 +3539,7 @@ const plugin = _definePlugin({
 
     stop() {
         pluginRunning = false;
+        focusedProfileRequest = null;
         pendingNativeMounts.clear();
         pendingProfileRequests.clear();
         window.removeEventListener("resize", enforcePopoutWidth);
