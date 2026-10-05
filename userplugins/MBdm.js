@@ -13,6 +13,17 @@ const ownedNativeProfiles = new Map();
 const pendingProfileRequests = new Map();
 let nativeProfileDescriptor = null;
 let focusedProfileRequest = null;
+let profileFocusRequestId = 0;
+let profileFocusAnimation = 0;
+let profileFocusTimer = 0;
+let globalFileDropTargetUserId = null;
+let globalFileDropListening = false;
+let voiceUnreadSyncFrame = 0;
+const voiceUnreadStoreCleanups = [];
+const conversationRoleStoreCleanups = [];
+const routedVoiceUnreads = new Map();
+const pendingVoiceUnreadAcks = new Map();
+const VOICE_UNREAD_ACK_GRACE_MS = 2000;
 
 function getReactRuntime() {
     const common = window.Vencord?.Webpack?.Common || {};
@@ -127,11 +138,9 @@ function makeReusableNativeDescriptor(descriptor) {
 function openNativeProfile(userId, options = {}, descriptor = resolveNativeProfileDescriptor()) {
     if (!pluginRunning || !userId || !descriptor) return false;
     userId = String(userId);
-    focusedProfileRequest = userId;
     if (ownedNativeProfiles.has(userId)) {
-        bringToFront(userId);
+        activateProfile(userId, true);
         const session = activeSessions.get(userId)?.session;
-        session?.focusComposer();
         session?.scrollToLatest();
         return true;
     }
@@ -139,6 +148,8 @@ function openNativeProfile(userId, options = {}, descriptor = resolveNativeProfi
     const UserStore = getStore("UserStore", "getCurrentUser");
     const user = UserStore?.getUser?.(userId) || (String(descriptor.props.user?.id) === userId ? descriptor.props.user : null);
     if (!runtime || !user) return false;
+    cancelPendingProfileFocus();
+    focusedProfileRequest = userId;
     const host = document.createElement("div");
     host.className = "qw-native-react-root";
     host.dataset.qwNativeUser = userId;
@@ -146,11 +157,12 @@ function openNativeProfile(userId, options = {}, descriptor = resolveNativeProfi
     host.style.left = Math.round(window.innerWidth / 2) + "px";
     host.style.top = "80px";
     document.body.appendChild(host);
-    const record = { userId, host, root: runtime.createRoot(host), descriptor, outer: null };
+    const record = { userId, host, root: runtime.createRoot(host), descriptor, outer: null, context: null };
     ownedNativeProfiles.set(userId, record);
     const anchorRef = { current: null };
     const noop = () => {};
     const context = resolveNativeProfileContext(options.anchor, descriptor, options);
+    record.context = context;
     const props = {
         ...descriptor.props,
         userId, user,
@@ -328,11 +340,20 @@ function getEffectiveConfig() {
 }
 
 function getContrastColor(hex) {
-    if (!hex || typeof hex !== "string" || !hex.startsWith("#")) return "";
-    let clean = hex.replace("#", "");
-    if (clean.length === 3) clean = clean.split("").map(c => c + c).join("");
-    if (clean.length !== 6) return "";
-    const r = parseInt(clean.substring(0, 2), 16), g = parseInt(clean.substring(2, 4), 16), b = parseInt(clean.substring(4, 6), 16);
+    if (!hex || typeof hex !== "string") return "";
+    let r, g, b;
+    if (hex.startsWith("#")) {
+        let clean = hex.replace("#", "");
+        if (clean.length === 3) clean = clean.split("").map(c => c + c).join("");
+        if (clean.length !== 6 && clean.length !== 8) return "";
+        r = parseInt(clean.substring(0, 2), 16);
+        g = parseInt(clean.substring(2, 4), 16);
+        b = parseInt(clean.substring(4, 6), 16);
+    } else {
+        const match = hex.match(/^rgba?\(\s*(\d+(?:\.\d+)?)\s*[, ]\s*(\d+(?:\.\d+)?)\s*[, ]\s*(\d+(?:\.\d+)?)/i);
+        if (!match) return "";
+        [, r, g, b] = match.map(Number);
+    }
     if (isNaN(r) || isNaN(g) || isNaN(b)) return "";
     return ((r * 299 + g * 587 + b * 114) / 1000) >= 145 ? "#111214" : "#ffffff";
 }
@@ -371,6 +392,22 @@ function getNativeProfileParts(outer) {
     const bodies = [...surface.querySelectorAll('[class*="body_"], [class*="bodyContainer_"], [class*="profileBody_"], [class*="scroller_"]')].filter(element => !excluded(element) && !element.contains(banner));
     const body = bodies.find(element => !bodies.some(parent => parent !== element && parent.contains(element))) || null;
     return { frame, surface, inner, banner, body };
+}
+
+function applyProfilePointerRouting(outer, parts) {
+    const { frame, surface } = parts;
+    // Discord's portal and dialog shells can cover areas outside the painted
+    // profile. Keep those shells transparent to pointer hit-testing while the
+    // real card (and plugin chat below it) remains fully interactive.
+    const transparentShells = new Set([outer, frame]);
+    for (let parent = surface?.parentElement; parent && frame?.contains(parent); parent = parent.parentElement) {
+        transparentShells.add(parent);
+        if (parent === frame) break;
+    }
+    for (const element of transparentShells) {
+        if (element && element !== surface) setNativeStyle(outer, element, "pointer-events", "none");
+    }
+    if (surface) setNativeStyle(outer, surface, "pointer-events", "auto");
 }
 
 function resizeNativeBanner(outer, banner, width) {
@@ -415,6 +452,7 @@ function applyPopoutDimensions(outer) {
         setNativeStyle(outer, element, 'overflow', 'visible');
         if (element !== outer && getComputedStyle(element).position === 'static') setNativeStyle(outer, element, 'position', 'relative');
     }
+    applyProfilePointerRouting(outer, parts);
     // Let the native frame decoration overhang, while preserving Discord's
     // own clipping inside the effect so its intro starts within the card.
     for (const effect of frame.querySelectorAll('[class*="profileEffects_"], [class*="profileEffect_"]')) {
@@ -711,8 +749,6 @@ function attachChatLayout(outer, ui) {
         if (records.some(record => !record.target.closest?.('.qw-root, #qw-floating-settings, #qw-lightbox'))) dirty = true;
     });
     nativeObserver.observe(parts.frame, { childList: true, attributes: true, subtree: true, attributeFilter: ['class', 'style'] });
-    const onPointerDown = () => bringToFront(ui.dataset.userId);
-    ui.addEventListener('pointerdown', onPointerDown, true);
     refresh();
     animation = requestAnimationFrame(trackPosition);
     return { refresh, destroy() {
@@ -720,20 +756,19 @@ function attachChatLayout(outer, ui) {
         cancelAnimationFrame(animation);
         resizeObserver.disconnect();
         nativeObserver.disconnect();
-        ui.removeEventListener('pointerdown', onPointerDown, true);
     } };
 }
 
 function positionProfilePopout(outer, index = 0) {
     if (!outer) return;
-    applyPopoutDimensions(outer);
+    const parts = applyPopoutDimensions(outer);
     const width = getAttachedProfileWidth();
     const saved = getStoredConfig().lastPosition;
     const offset = index * 24;
     const combinedWidth = width;
     const left = Math.max(10, Math.min(window.innerWidth - width - 10, (saved?.left ?? (window.innerWidth - combinedWidth) / 2) + offset));
     const top = Math.max(10, Math.min(window.innerHeight - 80, (saved?.top ?? (window.innerHeight - getAttachedProfileHeight()) / 2) + offset));
-    const positionStyles = { position: "fixed", transform: "none", right: "auto", bottom: "auto", margin: "0", "pointer-events": "auto" };
+    const positionStyles = { position: "fixed", transform: "none", right: "auto", bottom: "auto", margin: "0" };
     if (getNativeProfileFrame(outer) !== outer) positionStyles.overflow = "visible";
     for (const [property, value] of Object.entries(positionStyles)) {
         setNativeStyle(outer, outer, property, value);
@@ -753,6 +788,7 @@ function enforcePopoutWidth() {
 }
 
 function bringToFront(userId) {
+    userId = String(userId);
     // Discord owns portal stacking, including menus and modals opened by its
     // original profile buttons. Never raise the profile above those portals.
     const idx = sessionStack.indexOf(userId);
@@ -763,7 +799,7 @@ function bringToFront(userId) {
     for (let i = 0; i < sessionStack.length; i++) {
         const record = ownedNativeProfiles.get(String(sessionStack[i]));
         // Both columns and the native decoration share this portal's stack.
-        const level = (i - sessionStack.length) * 3;
+        const level = 10 + i;
         if (record?.outer) setNativeStyle(record.outer, record.outer, "z-index", String(level));
         const session = activeSessions.get(String(sessionStack[i]))?.session;
         // Chat paints above the native background inside its own portal.
@@ -800,9 +836,17 @@ function cleanupNativeSession(userId, requestClose = false) {
         if (requestClose) destroyOwnedNativeProfile(userId);
         return;
     }
+    if (globalFileDropTargetUserId === userId) {
+        data.outer.classList.remove("qw-file-drop-active");
+        globalFileDropTargetUserId = null;
+    }
     activeSessions.delete(userId);
     const idx = sessionStack.indexOf(userId);
     if (idx !== -1) sessionStack.splice(idx, 1);
+    if (focusedProfileRequest === userId) {
+        cancelPendingProfileFocus();
+        focusedProfileRequest = sessionStack.length ? String(sessionStack[sessionStack.length - 1]) : null;
+    }
     const owned = ownedNativeProfiles.get(userId);
     const nativeClose = requestClose && !owned && data.outer.isConnected ? (getNativePopoutClose(data.outer) || data.nativeClose) : null;
     if (activeDragCleanup) activeDragCleanup();
@@ -812,7 +856,8 @@ function cleanupNativeSession(userId, requestClose = false) {
     for (const [handle, binding] of draggableHandles) {
         if (binding.outer === data.outer) binding.cleanup();
     }
-    data.outer.removeEventListener("pointerdown", data.onPointerDown, true);
+    data.outer.removeEventListener("pointerdown", data.onPointerActivate, true);
+    data.outer.removeEventListener("focusin", data.onFocusActivate, true);
     data.outer.querySelectorAll(".qw-floating-gear-btn, .qw-top-close-btn").forEach(element => element.remove());
     restoreNativeStyles(data.outer);
     for (const [name, value] of data.attributes) {
@@ -836,8 +881,10 @@ function updateCustomStyles() {
     const cfg = getEffectiveConfig();
     enforcePopoutWidth();
 
-    const myTextContrast = getContrastColor(cfg.myColor);
-    const theirTextContrast = getContrastColor(cfg.theirColor);
+    const myColor = cfg.myColor || "#613f45";
+    const theirColor = cfg.theirColor || "#99578d";
+    const myTextContrast = getContrastColor(myColor) || "#ffffff";
+    const theirTextContrast = getContrastColor(theirColor) || "#ffffff";
 
     let el = document.getElementById("quick-whisper-custom-styles");
     if (!el) {
@@ -848,75 +895,60 @@ function updateCustomStyles() {
 
     el.textContent = `
         .qw-root {
-            --qw-my-bubble-color: ${cfg.myColor || "#613f45"};
-            --qw-their-bubble-color: ${cfg.theirColor || "#99578d"};
-            --qw-my-bubble-text: ${myTextContrast || "#ffffff"};
-            --qw-their-bubble-text: ${theirTextContrast || "#ffffff"};
+            --qw-my-bubble-color: ${myColor};
+            --qw-their-bubble-color: ${theirColor};
+            --qw-my-bubble-text: ${myTextContrast};
+            --qw-their-bubble-text: ${theirTextContrast};
         }
         .qw-msg-bubble { font-size: ${cfg.fontSize}px !important; }
         .qw-msg-header { display: ${cfg.showHeaders ? "flex" : "none"} !important; }
         .qw-msg-them .qw-msg-wrapper { padding-left: ${cfg.showHeaders ? "46px" : "0"}; }
-        ${cfg.myColor ? `
-            .qw-msg-me .qw-msg-bubble { background: ${cfg.myColor} !important; }
-            ${myTextContrast ? `
-                .qw-msg-me .qw-msg-bubble, .qw-msg-me .qw-msg-text, .qw-msg-me .qw-reply-author, .qw-msg-me .qw-reply-text, .qw-msg-me .qw-msg-file { color: ${myTextContrast} !important; }
-                .qw-msg-me .qw-msg-time { color: ${myTextContrast === "#111214" ? "rgba(0,0,0,0.65)" : "rgba(255,255,255,0.7)"} !important; }
-                .qw-msg-me .qw-reply-banner { border-bottom-color: ${myTextContrast === "#111214" ? "rgba(0,0,0,0.15)" : "rgba(255,255,255,0.2)"} !important; }
-                ${myTextContrast === "#111214" ? `
-                    .qw-msg-me .qw-link {
-                        color: #0369a1 !important;
-                        background: rgba(3, 105, 161, 0.12) !important;
-                        border-color: rgba(3, 105, 161, 0.3) !important;
-                        text-decoration-color: #0369a1 !important;
-                    }
-                    .qw-msg-me .qw-link:hover {
-                        color: #0c4a6e !important;
-                        background: rgba(3, 105, 161, 0.22) !important;
-                    }
-                ` : `
-                    .qw-msg-me .qw-link {
-                        color: #a5f3fc !important;
-                        background: rgba(255, 255, 255, 0.18) !important;
-                        border-color: rgba(255, 255, 255, 0.3) !important;
-                    }
-                    .qw-msg-me .qw-link:hover {
-                        color: #ffffff !important;
-                        background: rgba(255, 255, 255, 0.32) !important;
-                    }
-                `}
-            ` : ""}
-        ` : `
-            .qw-msg-me .qw-msg-bubble {
-                background: #99578d !important;
-            }
-        `}
-        ${cfg.theirColor ? `
-            .qw-msg-them .qw-msg-bubble { background: ${cfg.theirColor} !important; }
-            ${theirTextContrast ? `
-                .qw-msg-them .qw-msg-bubble, .qw-msg-them .qw-msg-text, .qw-msg-them .qw-reply-author, .qw-msg-them .qw-reply-text, .qw-msg-them .qw-msg-file { color: ${theirTextContrast} !important; }
-                .qw-msg-them .qw-msg-time { color: ${theirTextContrast === "#111214" ? "rgba(0,0,0,0.65)" : "rgba(255,255,255,0.7)"} !important; }
-                .qw-msg-them .qw-reply-banner { border-bottom-color: ${theirTextContrast === "#111214" ? "rgba(0,0,0,0.15)" : "rgba(255,255,255,0.2)"} !important; }
-                ${theirTextContrast === "#111214" ? `
-                    .qw-msg-them .qw-link {
-                        color: #0369a1 !important;
-                        background: rgba(3, 105, 161, 0.12) !important;
-                        border-color: rgba(3, 105, 161, 0.3) !important;
-                        text-decoration-color: #0369a1 !important;
-                    }
-                ` : `
-                    .qw-msg-them .qw-link {
-                        color: #38bdf8 !important;
-                        background: rgba(56, 189, 248, 0.15) !important;
-                        border-color: rgba(56, 189, 248, 0.3) !important;
-                    }
-                `}
-            ` : ""}
-        ` : ""}
+        .qw-msg-me .qw-msg-bubble { background: var(--qw-my-bubble-color) !important; }
+        .qw-msg-them .qw-msg-bubble { background: var(--qw-their-bubble-color) !important; }
+        .qw-msg-me .qw-msg-bubble, .qw-msg-me .qw-msg-text, .qw-msg-me .qw-reply-author, .qw-msg-me .qw-reply-text, .qw-msg-me .qw-msg-file { color: var(--qw-my-bubble-text) !important; }
+        .qw-msg-them .qw-msg-bubble, .qw-msg-them .qw-msg-text, .qw-msg-them .qw-reply-author, .qw-msg-them .qw-reply-text, .qw-msg-them .qw-msg-file { color: var(--qw-their-bubble-text) !important; }
+        .qw-msg-me .qw-msg-time { color: color-mix(in srgb, var(--qw-my-bubble-text) 70%, transparent) !important; }
+        .qw-msg-them .qw-msg-time { color: color-mix(in srgb, var(--qw-their-bubble-text) 70%, transparent) !important; }
+        .qw-msg-me .qw-reply-banner { border-bottom-color: color-mix(in srgb, var(--qw-my-bubble-text) 20%, transparent) !important; }
+        .qw-msg-them .qw-reply-banner { border-bottom-color: color-mix(in srgb, var(--qw-their-bubble-text) 20%, transparent) !important; }
     `;
+    refreshAllConversationRoleColors();
 }
 
 const PLUGIN_STYLES = `
 :root { --qw-profile-width: 260px; }
+[data-qw-voice-unread-hidden="true"],
+#guild-list-unread-dms[data-qw-voice-unread-empty="true"] {
+    display: none !important;
+}
+.qw-voice-unread-dot {
+    --qw-voice-unread-color: #f23f43;
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    min-width: 8px;
+    flex: 0 0 8px;
+    margin-right: 5px;
+    border-radius: 50%;
+    vertical-align: middle;
+    background: var(--qw-voice-unread-color);
+    box-shadow: 0 0 5px var(--qw-voice-unread-color), 0 0 10px color-mix(in srgb, var(--qw-voice-unread-color) 85%, transparent);
+    animation: qw-voice-unread-pulse 1.35s ease-in-out infinite;
+}
+.qw-voice-unread-status-slot {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex: 0 0 auto;
+    margin-left: auto;
+}
+@keyframes qw-voice-unread-pulse {
+    0%, 100% { opacity: 0.78; box-shadow: 0 0 4px var(--qw-voice-unread-color), 0 0 8px color-mix(in srgb, var(--qw-voice-unread-color) 65%, transparent); }
+    50% { opacity: 1; box-shadow: 0 0 7px var(--qw-voice-unread-color), 0 0 14px color-mix(in srgb, var(--qw-voice-unread-color) 95%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .qw-voice-unread-dot { animation: none; }
+}
 [data-qw-managed="true"] {
     box-sizing: border-box !important;
     --reference-position-layer-max-height: calc(100vh - 20px) !important;
@@ -928,6 +960,9 @@ const PLUGIN_STYLES = `
 [data-qw-managed="true"] [class*="userPopoutOuter"],
 [data-qw-managed="true"] [class*="userProfileInner"] {
     box-sizing: border-box !important;
+}
+[data-qw-managed="true"] [data-qw-native-surface="true"] {
+    pointer-events: auto !important;
 }
 
 .qw-native-hidden { display: none !important; }
@@ -947,7 +982,7 @@ const PLUGIN_STYLES = `
     min-height: 0 !important;
     position: fixed !important;
     overflow: hidden;
-    pointer-events: auto;
+    pointer-events: auto !important;
     color: var(--qw-profile-text, #e4e4e7);
     direction: ltr;
     font-family: var(--font-primary, "gg sans", "Noto Sans", sans-serif);
@@ -1243,6 +1278,9 @@ const PLUGIN_STYLES = `
     align-items: center !important;
     gap: 6px !important;
     width: 100% !important;
+    position: relative !important;
+    z-index: 2 !important;
+    pointer-events: auto !important;
 }
 .qw-input {
     flex: 1;
@@ -1260,6 +1298,7 @@ const PLUGIN_STYLES = `
     unicode-bidi: plaintext;
     text-align: start;
     box-sizing: border-box;
+    pointer-events: auto !important;
 }
 .qw-input::placeholder { color: var(--qw-profile-muted, #949ba4); }
 .qw-composer-action-btn {
@@ -1287,7 +1326,7 @@ const PLUGIN_STYLES = `
     background: transparent !important;
     border: none !important;
     cursor: pointer !important;
-    color: #c38bb7 !important;
+    color: var(--qw-profile-text, #b5bac1) !important;
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
@@ -1298,37 +1337,59 @@ const PLUGIN_STYLES = `
     margin-bottom: 2px !important;
 }
 .qw-send-btn:hover {
-    color: #ffffff !important;
+    color: var(--interactive-hover, #ffffff) !important;
     transform: scale(1.1) !important;
 }
 .qw-attachment-preview {
-    display: flex;
-    align-items: center;
-    gap: 8px;
+    display: block;
     padding: 4px 8px;
     background: rgba(0, 0, 0, 0.35);
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 8px;
     width: 100%;
     box-sizing: border-box;
+    max-height: 150px;
+    overflow-y: auto;
 }
-.qw-att-thumb-wrapper {
+.qw-attachment-list {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+.qw-att-item {
     position: relative;
-    width: 44px;
-    height: 44px;
-    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    padding: 3px 22px 3px 3px;
+    border-radius: 7px;
+    background: rgba(255, 255, 255, 0.06);
 }
 .qw-att-thumb {
     width: 44px;
     height: 44px;
+    flex-shrink: 0;
     object-fit: cover;
     border-radius: 6px;
     display: block;
 }
+.qw-att-file-icon {
+    width: 44px;
+    height: 44px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--qw-profile-text, #dbdee1);
+    font-size: 20px;
+}
 .qw-att-remove-btn {
     position: absolute;
-    top: -4px;
-    right: -4px;
+    top: 4px;
+    right: 3px;
     width: 18px;
     height: 18px;
     border-radius: 50%;
@@ -1350,6 +1411,12 @@ const PLUGIN_STYLES = `
     text-overflow: ellipsis;
     white-space: nowrap;
     flex: 1;
+}
+.qw-att-name, .qw-att-size { display: block; overflow: hidden; text-overflow: ellipsis; }
+.qw-att-size { margin-top: 2px; color: var(--qw-profile-muted, #949ba4); font-size: 10px; }
+[data-qw-managed="true"].qw-file-drop-active .qw-composer {
+    outline: 2px solid var(--interactive-active, #5865f2) !important;
+    outline-offset: 2px !important;
 }
 .qw-voice-bar {
     display: flex;
@@ -1673,6 +1740,191 @@ function getStore(name, ...props) {
     return null;
 }
 
+function isUsableCssColor(value) {
+    if (typeof value !== "string" || !value.trim() || value === "transparent" || value === "rgba(0, 0, 0, 0)") return false;
+    return typeof window.CSS?.supports !== "function" || window.CSS.supports("color", value);
+}
+
+function getRoleDisplayColor(role) {
+    const color = role?.colorString || role?.colorStrings?.primaryColor;
+    return isUsableCssColor(color) ? color.trim() : "";
+}
+
+function getConversationRoleColor(guildId, userId, outer) {
+    if (!userId) return "";
+    let member = null;
+    if (guildId) {
+        const GuildMemberStore = getStore("GuildMemberStore", "getMember", "getMembers", "getNick");
+        const GuildRoleStore = getStore("GuildRoleStore", "getSortedRoles", "getRole");
+        member = GuildMemberStore?.getMember?.(guildId, userId);
+        if (member) {
+            const memberRoleIds = new Set((member.roles || []).map(String));
+            const roles = (GuildRoleStore?.getSortedRoles?.(guildId) || []).filter(role => memberRoleIds.has(String(role.id)));
+            const aptIndex = roles.findIndex(role => String(role.name || "").trim().toLowerCase() === "apt");
+            const candidates = aptIndex >= 0 ? roles.slice(aptIndex + 1) : roles;
+            for (const role of candidates) {
+                const color = getRoleDisplayColor(role);
+                if (color) return color;
+            }
+        }
+    }
+
+    const memberColor = member?.colorString || member?.colorStrings?.primaryColor;
+    if (isUsableCssColor(memberColor)) return memberColor.trim();
+
+    const nameElement = outer?.querySelector?.('[class*="nickname_"], [class^="nickname_"], [class*="username_"], [class^="username_"], [class*="userTag_"], [class^="userTag_"]');
+    const displayedColor = nameElement ? getComputedStyle(nameElement).color : "";
+    return isUsableCssColor(displayedColor) ? displayedColor.trim() : "";
+}
+
+function refreshAllConversationRoleColors() {
+    for (const data of activeSessions.values()) data.session?.applyRoleBubbleColors?.();
+}
+
+function startConversationRoleColors() {
+    const stores = new Set([
+        getStore("GuildMemberStore", "getMember", "getMembers", "getNick"),
+        getStore("GuildRoleStore", "getSortedRoles", "getRole")
+    ].filter(Boolean));
+    for (const store of stores) {
+        if (typeof store.addChangeListener !== "function" || typeof store.removeChangeListener !== "function") continue;
+        store.addChangeListener(refreshAllConversationRoleColors);
+        conversationRoleStoreCleanups.push(() => store.removeChangeListener(refreshAllConversationRoleColors));
+    }
+    refreshAllConversationRoleColors();
+}
+
+function stopConversationRoleColors() {
+    while (conversationRoleStoreCleanups.length) {
+        try { conversationRoleStoreCleanups.pop()(); } catch (err) {}
+    }
+}
+
+function cancelPendingProfileFocus() {
+    profileFocusRequestId++;
+    cancelAnimationFrame(profileFocusAnimation);
+    clearTimeout(profileFocusTimer);
+    profileFocusAnimation = 0;
+    profileFocusTimer = 0;
+}
+
+function activateProfile(userId, focusComposer = false) {
+    userId = String(userId || "");
+    if (!userId) return;
+    focusedProfileRequest = userId;
+    bringToFront(userId);
+    cancelPendingProfileFocus();
+    if (!focusComposer) return;
+
+    const requestId = profileFocusRequestId;
+    const applyFocus = () => {
+        if (!pluginRunning || requestId !== profileFocusRequestId || focusedProfileRequest !== userId) return;
+        activeSessions.get(userId)?.session?.focusComposer();
+    };
+    applyFocus();
+    profileFocusAnimation = requestAnimationFrame(() => {
+        profileFocusAnimation = 0;
+        applyFocus();
+    });
+    profileFocusTimer = setTimeout(() => {
+        profileFocusTimer = 0;
+        applyFocus();
+    }, 80);
+}
+
+function handleProfileComposerFocus(event) {
+    const input = event.target;
+    if (!(input instanceof Element) || !input.matches(".qw-input")) return;
+
+    const data = [...activeSessions.values()].find(candidate => candidate.session?.ui?.contains(input));
+    if (!data) return;
+
+    // Discord's native profile focus guard otherwise redirects focus to the
+    // newest profile (often its send button). Claim this composer first, then
+    // stop only this custom input's focus event before that guard can see it.
+    activateProfile(data.userId, false);
+    event.stopImmediatePropagation();
+}
+
+function isGlobalFileDrag(event) {
+    return (event.dataTransfer?.files?.length || 0) > 0 || Array.from(event.dataTransfer?.types || []).includes("Files");
+}
+
+function getProfileDropTargetAtPoint(x, y) {
+    for (let index = sessionStack.length - 1; index >= 0; index--) {
+        const userId = String(sessionStack[index]);
+        const data = activeSessions.get(userId);
+        if (!data?.outer?.isConnected || !data.session?.ui?.isConnected) continue;
+        const parts = getNativeProfileParts(data.outer);
+        // Full-screen portal/dialog wrappers must not count as profile targets.
+        const regions = [parts.surface, data.session.ui].filter(Boolean);
+        const maxWidth = Math.min(window.innerWidth, getAttachedProfileWidth() + 160);
+        const maxHeight = Math.min(window.innerHeight, getAttachedProfileHeight() + 160);
+        if (regions.some(region => {
+            const rect = region.getBoundingClientRect();
+            return rect.width > 0 && rect.height > 0
+                && rect.width <= maxWidth && rect.height <= maxHeight
+                && x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+        })) return data;
+    }
+    return null;
+}
+
+function setGlobalFileDropTarget(data) {
+    const nextUserId = data?.userId ? String(data.userId) : null;
+    if (globalFileDropTargetUserId === nextUserId) return;
+    if (globalFileDropTargetUserId) activeSessions.get(globalFileDropTargetUserId)?.outer?.classList.remove("qw-file-drop-active");
+    globalFileDropTargetUserId = nextUserId;
+    if (data?.outer) data.outer.classList.add("qw-file-drop-active");
+}
+
+function handleGlobalProfileFileDrag(event) {
+    if (!pluginRunning || !isGlobalFileDrag(event)) {
+        if (event.type === "drop" || event.type === "dragleave") setGlobalFileDropTarget(null);
+        return;
+    }
+
+    const data = getProfileDropTargetAtPoint(event.clientX, event.clientY)
+        || (event.type === "drop" && globalFileDropTargetUserId ? activeSessions.get(globalFileDropTargetUserId) : null);
+    if (!data) {
+        setGlobalFileDropTarget(null);
+        return;
+    }
+
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    try { event.dataTransfer.dropEffect = "copy"; } catch (err) {}
+    setGlobalFileDropTarget(data);
+
+    if (event.type !== "drop") return;
+    const files = Array.from(event.dataTransfer?.files || []);
+    setGlobalFileDropTarget(null);
+    if (!files.length) return;
+    bringToFront(data.userId);
+    data.session.ui?._qwAttachmentApi?.addFiles(files, false);
+}
+
+function clearGlobalProfileFileDrag() {
+    setGlobalFileDropTarget(null);
+}
+
+function startGlobalProfileFileDrop() {
+    if (globalFileDropListening) return;
+    globalFileDropListening = true;
+    for (const type of ["dragenter", "dragover", "dragleave", "drop"]) window.addEventListener(type, handleGlobalProfileFileDrag, true);
+    window.addEventListener("dragend", clearGlobalProfileFileDrag, true);
+    window.addEventListener("blur", clearGlobalProfileFileDrag, true);
+}
+
+function stopGlobalProfileFileDrop() {
+    if (!globalFileDropListening) return;
+    globalFileDropListening = false;
+    for (const type of ["dragenter", "dragover", "dragleave", "drop"]) window.removeEventListener(type, handleGlobalProfileFileDrag, true);
+    window.removeEventListener("dragend", clearGlobalProfileFileDrag, true);
+    window.removeEventListener("blur", clearGlobalProfileFileDrag, true);
+    clearGlobalProfileFileDrag();
+}
+
 function getAvatarUrl(author) {
     if (!author) return "https://cdn.discordapp.com/embed/avatars/0.png";
     if (author.avatar) {
@@ -1684,10 +1936,13 @@ function getAvatarUrl(author) {
 }
 
 async function apiRequest(method, url, data) {
+    method = String(method || "get").toLowerCase();
     const RestAPI = getStore("RestAPI", "get", "post", "put");
     if (RestAPI && typeof RestAPI[method] === "function") {
         if (method === "get") return await RestAPI.get({ url, query: data });
-        return await RestAPI.post({ url, body: data });
+        const request = { url };
+        if (data !== undefined) request.body = data;
+        return await RestAPI[method](request);
     }
     const tokenFinder = getStore(null, "getToken");
     const token = tokenFinder?.getToken ? tokenFinder.getToken() : "";
@@ -1696,7 +1951,9 @@ async function apiRequest(method, url, data) {
     if (method === "get" && data) fullUrl += "?" + new URLSearchParams(data).toString();
     else if (data) opts.body = JSON.stringify(data);
     const res = await fetch(fullUrl, opts);
-    return { body: await res.json() };
+    if (!res.ok) throw new Error(`Discord API ${method.toUpperCase()} ${url} failed (${res.status})`);
+    const text = await res.text();
+    return { body: text ? JSON.parse(text) : null, status: res.status };
 }
 
 function getAuthToken() {
@@ -1707,18 +1964,20 @@ function getAuthToken() {
     return "";
 }
 
-async function sendMultipartMessage(channelId, text, file, isVoice = false, durationSecs = 0) {
+async function sendMultipartMessage(channelId, text, files, isVoice = false, durationSecs = 0) {
     try {
+        files = (Array.isArray(files) ? files : [files]).filter(Boolean);
+        if (!files.length) return null;
+        if (isVoice) files = files.slice(0, 1);
         const nonce = (BigInt(Date.now() - 1420070400000) << 22n).toString();
-        const filename = file.name || (isVoice ? "voice-message.ogg" : "image.png");
         const payload = {
             content: text || "",
             tts: false,
             nonce: nonce,
-            attachments: [{
-                id: 0,
-                filename: filename
-            }]
+            attachments: files.map((file, index) => ({
+                id: index,
+                filename: file.name || (isVoice ? "voice-message.ogg" : `file-${index + 1}`)
+            }))
         };
 
         if (isVoice) {
@@ -1730,7 +1989,7 @@ async function sendMultipartMessage(channelId, text, file, isVoice = false, dura
 
         const formData = new FormData();
         formData.append("payload_json", JSON.stringify(payload));
-        formData.append("files[0]", file, filename);
+        files.forEach((file, index) => formData.append(`files[${index}]`, file, payload.attachments[index].filename));
 
         const token = getAuthToken();
         const headers = {};
@@ -2331,7 +2590,9 @@ function makeDraggable(popout, handle) {
         const startRect = outer.getBoundingClientRect();
         const startX = event.clientX, startY = event.clientY;
         const pointerId = event.pointerId;
-        const chat = [...activeSessions.values()].find(data => data.outer === outer)?.session;
+        const activeData = [...activeSessions.values()].find(data => data.outer === outer);
+        const chat = activeData?.session;
+        if (activeData?.userId) bringToFront(activeData.userId);
         const focusedComposer = (outer.contains(document.activeElement) || chat?.ui?.contains(document.activeElement)) && document.activeElement?.matches('.qw-input, [contenteditable="true"]') ? document.activeElement : null;
         const selection = focusedComposer && typeof focusedComposer.selectionStart === "number" ? {
             start: focusedComposer.selectionStart, end: focusedComposer.selectionEnd, direction: focusedComposer.selectionDirection
@@ -2601,11 +2862,7 @@ function buildUI(username, onSend, onLoadOlder, userId = "") {
         </div>
         <div class="qw-composer">
             <div class="qw-attachment-preview" id="qw-attachment-preview" style="display: none;">
-                <div class="qw-att-thumb-wrapper">
-                    <img class="qw-att-thumb" id="qw-att-thumb" src="" alt="preview" />
-                    <button class="qw-att-remove-btn" id="qw-att-remove-btn" title="Remove image">✕</button>
-                </div>
-                <div class="qw-att-info" id="qw-att-info">image.png</div>
+                <div class="qw-attachment-list" id="qw-attachment-list"></div>
             </div>
 
             <div class="qw-voice-bar" id="qw-voice-bar" style="display: none;">
@@ -2624,8 +2881,8 @@ function buildUI(username, onSend, onLoadOlder, userId = "") {
             </div>
 
             <div class="qw-input-row" id="qw-input-row">
-                <input type="file" accept="image/*" id="qw-file-input" style="display: none;" />
-                <button class="qw-composer-action-btn qw-upload-btn" id="qw-upload-btn" title="Upload Image">
+                <input type="file" multiple id="qw-file-input" style="display: none;" />
+                <button class="qw-composer-action-btn qw-upload-btn" id="qw-upload-btn" title="Upload Files">
                     <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
                         <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"></path>
                     </svg>
@@ -2662,9 +2919,7 @@ function buildUI(username, onSend, onLoadOlder, userId = "") {
     const micBtn = root.querySelector("#qw-mic-btn");
 
     const attPreview = root.querySelector("#qw-attachment-preview");
-    const attThumb = root.querySelector("#qw-att-thumb");
-    const attInfo = root.querySelector("#qw-att-info");
-    const attRemoveBtn = root.querySelector("#qw-att-remove-btn");
+    const attList = root.querySelector("#qw-attachment-list");
 
     const voiceBar = root.querySelector("#qw-voice-bar");
     const voiceTimer = root.querySelector("#qw-voice-timer");
@@ -2672,38 +2927,96 @@ function buildUI(username, onSend, onLoadOlder, userId = "") {
     const voiceSendBtn = root.querySelector("#qw-voice-send-btn");
     const inputRow = root.querySelector("#qw-input-row");
 
-    let pendingAttachment = null;
-    let pendingObjectUrl = null;
+    let attachmentSequence = 0;
+    const pendingAttachments = [];
 
-    function setPendingAttachment(file) {
-        if (!file) return;
-        pendingAttachment = file;
-        if (pendingObjectUrl) URL.revokeObjectURL(pendingObjectUrl);
-        pendingObjectUrl = URL.createObjectURL(file);
-
-        attThumb.src = pendingObjectUrl;
-        const sizeKb = Math.round(file.size / 1024);
-        attInfo.textContent = `${file.name || "image.png"} (${sizeKb > 1024 ? (sizeKb / 1024).toFixed(1) + " MB" : sizeKb + " KB"})`;
-        attPreview.style.display = "flex";
-        input.focus();
+    function formatAttachmentSize(size) {
+        if (size >= 1024 * 1024) return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+        if (size >= 1024) return `${Math.max(1, Math.round(size / 1024))} KB`;
+        return `${size || 0} B`;
     }
 
-    function clearAttachment() {
-        pendingAttachment = null;
-        if (pendingObjectUrl) {
-            URL.revokeObjectURL(pendingObjectUrl);
-            pendingObjectUrl = null;
+    function renderPendingAttachments() {
+        attList.replaceChildren();
+        for (const attachment of pendingAttachments) {
+            const item = document.createElement("div");
+            item.className = "qw-att-item";
+            item.dataset.attachmentId = String(attachment.id);
+
+            if (attachment.objectUrl) {
+                const thumb = document.createElement("img");
+                thumb.className = "qw-att-thumb";
+                thumb.src = attachment.objectUrl;
+                thumb.alt = "attachment preview";
+                item.appendChild(thumb);
+            } else {
+                const icon = document.createElement("span");
+                icon.className = "qw-att-file-icon";
+                icon.textContent = "📄";
+                item.appendChild(icon);
+            }
+
+            const info = document.createElement("span");
+            info.className = "qw-att-info";
+            const name = document.createElement("span");
+            name.className = "qw-att-name";
+            name.textContent = attachment.file.name || "File";
+            const size = document.createElement("span");
+            size.className = "qw-att-size";
+            size.textContent = formatAttachmentSize(attachment.file.size);
+            info.append(name, size);
+            item.appendChild(info);
+
+            const remove = document.createElement("button");
+            remove.className = "qw-att-remove-btn";
+            remove.type = "button";
+            remove.title = "Remove file";
+            remove.setAttribute("aria-label", `Remove ${attachment.file.name || "file"}`);
+            remove.textContent = "✕";
+            remove.addEventListener("pointerdown", event => event.preventDefault());
+            remove.addEventListener("click", event => {
+                event.preventDefault();
+                event.stopPropagation();
+                removePendingAttachment(attachment.id);
+                input.focus({ preventScroll: true });
+            });
+            item.appendChild(remove);
+            attList.appendChild(item);
         }
-        attPreview.style.display = "none";
-        attThumb.src = "";
-        attInfo.textContent = "";
+        attPreview.style.display = pendingAttachments.length ? "block" : "none";
     }
 
-    attRemoveBtn.addEventListener("click", e => {
-        e.preventDefault();
-        e.stopPropagation();
-        clearAttachment();
-    });
+    function addPendingAttachments(files, focusInput = true) {
+        for (const file of Array.from(files || [])) {
+            if (!file || typeof file.size !== "number") continue;
+            const isImage = String(file.type || "").startsWith("image/") || /\.(png|jpe?g|gif|webp|bmp|avif)$/i.test(file.name || "");
+            pendingAttachments.push({
+                id: ++attachmentSequence,
+                file,
+                objectUrl: isImage ? URL.createObjectURL(file) : null
+            });
+        }
+        renderPendingAttachments();
+        if (focusInput) input.focus({ preventScroll: true });
+    }
+
+    function removePendingAttachment(id) {
+        const index = pendingAttachments.findIndex(attachment => attachment.id === id);
+        if (index === -1) return;
+        const [attachment] = pendingAttachments.splice(index, 1);
+        if (attachment.objectUrl) URL.revokeObjectURL(attachment.objectUrl);
+        renderPendingAttachments();
+    }
+
+    function clearAttachments() {
+        for (const attachment of pendingAttachments) {
+            if (attachment.objectUrl) URL.revokeObjectURL(attachment.objectUrl);
+        }
+        pendingAttachments.length = 0;
+        renderPendingAttachments();
+    }
+
+    root._qwAttachmentApi = { addFiles: addPendingAttachments, cleanup: clearAttachments };
 
     uploadBtn.addEventListener("click", e => {
         e.preventDefault();
@@ -2712,8 +3025,8 @@ function buildUI(username, onSend, onLoadOlder, userId = "") {
     });
 
     fileInput.addEventListener("change", () => {
-        if (fileInput.files && fileInput.files[0]) {
-            setPendingAttachment(fileInput.files[0]);
+        if (fileInput.files?.length) {
+            addPendingAttachments(fileInput.files);
             fileInput.value = "";
         }
     });
@@ -2721,25 +3034,19 @@ function buildUI(username, onSend, onLoadOlder, userId = "") {
     function handlePaste(e) {
         const items = e.clipboardData?.items;
         if (!items) return;
+        const files = [];
         for (const item of items) {
             if (item.type && item.type.startsWith("image/")) {
-                e.preventDefault();
                 const file = item.getAsFile();
-                if (file) {
-                    setPendingAttachment(file);
-                }
-                return;
+                if (file) files.push(file);
             }
         }
+        if (!files.length) return;
+        e.preventDefault();
+        addPendingAttachments(files);
     }
 
-    input.addEventListener("paste", handlePaste);
     root.addEventListener("paste", handlePaste);
-
-    setTimeout(() => {
-        const outer = getPopoutOuter(root);
-        if (outer) outer.addEventListener("paste", handlePaste);
-    }, 150);
 
     let mediaRecorder = null;
     let audioStream = null;
@@ -2830,13 +3137,14 @@ function buildUI(username, onSend, onLoadOlder, userId = "") {
 
     function executeSend() {
         const text = input.value.trim();
-        const file = pendingAttachment;
-        if (!text && !file) return;
+        const files = pendingAttachments.map(attachment => attachment.file);
+        input.focus({ preventScroll: true });
+        if (!text && !files.length) return;
 
-        clearAttachment();
+        clearAttachments();
         input.value = "";
         input.style.height = "auto";
-        onSend(text, file, false, 0);
+        onSend(text, files, false, 0);
     }
 
     input.addEventListener("keydown", e => {
@@ -2851,6 +3159,10 @@ function buildUI(username, onSend, onLoadOlder, userId = "") {
         input.style.height = Math.min(input.scrollHeight, 90) + "px";
     });
 
+    sendBtn.addEventListener("pointerdown", event => {
+        event.preventDefault();
+        input.focus({ preventScroll: true });
+    });
     sendBtn.addEventListener("click", executeSend);
 
     scroller.addEventListener("scroll", () => {
@@ -2863,11 +3175,12 @@ function buildUI(username, onSend, onLoadOlder, userId = "") {
 }
 
 class WhisperSession {
-    constructor(nativeFooter, userId, channelId, username) {
+    constructor(nativeFooter, userId, channelId, username, guildId) {
         this.nativeFooter = nativeFooter;
         this.userId = userId;
         this.channelId = channelId;
         this.username = username;
+        this.guildId = guildId || null;
         this.messages = [];
         this.messageMap = new Map();
         this.isLoadingOlder = false;
@@ -2893,6 +3206,7 @@ class WhisperSession {
             () => this.loadOlder(),
             this.userId
         );
+        this.applyRoleBubbleColors();
 
         if (!this.nativeFooter) return;
         const outer = getPopoutOuter(this.nativeFooter);
@@ -2901,15 +3215,6 @@ class WhisperSession {
         this.nativeFooter.style.setProperty("display", "none", "important");
         this.nativeFooter.classList.add("qw-native-hidden");
         this.layout = attachChatLayout(outer, this.ui);
-
-        this.focusComposer();
-        this.focusAnimation = requestAnimationFrame(() => this.focusComposer());
-        this.focusTimer = setTimeout(() => {
-            const active = document.activeElement;
-            if (!activeSettingsModal && (active === this.ui?.querySelector("#qw-input") || !active?.matches('input, textarea, button, [role="button"], [contenteditable="true"]'))) {
-                this.focusComposer();
-            }
-        }, 100);
 
         const closeBtn = this.ui.querySelector("#qw-close-profile-btn");
         if (closeBtn) {
@@ -3040,6 +3345,18 @@ class WhisperSession {
         if (input?.isConnected) input.focus({ preventScroll: true });
     }
 
+    applyRoleBubbleColors() {
+        if (this.destroyed || !this.ui) return;
+        const cfg = getEffectiveConfig();
+        const outer = getPopoutOuter(this.nativeFooter);
+        const theirColor = getConversationRoleColor(this.guildId, this.userId, outer) || cfg.theirColor || "#99578d";
+        const myColor = getConversationRoleColor(this.guildId, this.currentUserId, null) || cfg.myColor || "#613f45";
+        this.ui.style.setProperty("--qw-their-bubble-color", theirColor);
+        this.ui.style.setProperty("--qw-their-bubble-text", getContrastColor(theirColor) || "#ffffff");
+        this.ui.style.setProperty("--qw-my-bubble-color", myColor);
+        this.ui.style.setProperty("--qw-my-bubble-text", getContrastColor(myColor) || "#ffffff");
+    }
+
     jumpToLatest() {
         if (this.destroyed || !this.scroller?.isConnected) return;
         const style = this.scroller.style;
@@ -3142,11 +3459,12 @@ class WhisperSession {
         }
     }
 
-    async sendMessage(content, file = null, isVoice = false, duration = 0) {
+    async sendMessage(content, files = null, isVoice = false, duration = 0) {
         try {
+            files = (Array.isArray(files) ? files : [files]).filter(Boolean);
             let res;
-            if (file) {
-                res = await sendMultipartMessage(this.channelId, content, file, isVoice, duration);
+            if (files.length) {
+                res = await sendMultipartMessage(this.channelId, content, files, isVoice, duration);
             } else {
                 const nonce = (BigInt(Date.now() - 1420070400000) << 22n).toString();
                 const r = await apiRequest("post", `/channels/${this.channelId}/messages`, {
@@ -3171,6 +3489,9 @@ class WhisperSession {
         const chId = event.channelId || msg.channel_id || msg.channelId;
         if (String(chId) !== String(this.channelId)) return;
         this.addMessage(msg);
+        if (String(msg.author?.id) === String(this.userId)) {
+            acknowledgeDirectMessageForUser(this.userId, this.channelId);
+        }
     }
 
     onFluxMessageUpdate(event) {
@@ -3204,8 +3525,7 @@ class WhisperSession {
     destroy() {
         if (this.destroyed) return;
         this.destroyed = true;
-        cancelAnimationFrame(this.focusAnimation);
-        clearTimeout(this.focusTimer);
+        this.ui?._qwAttachmentApi?.cleanup?.();
         cancelAnimationFrame(this.scrollAnimation);
         this.messageResizeObserver?.disconnect();
         this.layout?.destroy();
@@ -3301,6 +3621,322 @@ function getUserId(node) {
     return null;
 }
 
+function getDirectMessageRecipientId(channel) {
+    if (!channel || Number(channel.type) !== 1 || channel.guild_id) return null;
+    if (typeof channel.getRecipientId === "function") {
+        const recipientId = channel.getRecipientId();
+        if (recipientId) return String(recipientId);
+    }
+    const recipient = channel.recipients?.[0] ?? channel.rawRecipients?.[0] ?? channel.recipientId;
+    const recipientId = recipient?.id ?? recipient;
+    return recipientId ? String(recipientId) : null;
+}
+
+function getCurrentVoiceChannelId() {
+    const SelectedChannelStore = getStore("SelectedChannelStore", "getVoiceChannelId");
+    const selectedVoiceChannelId = SelectedChannelStore?.getVoiceChannelId?.();
+    if (selectedVoiceChannelId) return String(selectedVoiceChannelId);
+
+    const currentUser = getStore("UserStore", "getCurrentUser")?.getCurrentUser?.();
+    const voiceState = currentUser && getStore("VoiceStateStore", "getVoiceStateForUser")?.getVoiceStateForUser?.(currentUser.id);
+    return voiceState?.channelId ? String(voiceState.channelId) : null;
+}
+
+function getVoiceUserRows() {
+    const rows = new Set();
+    for (const element of document.querySelectorAll('[class*="voiceUser"]')) {
+        const isUserRow = [...element.classList].some(name => /voiceUser/i.test(name) && !/voiceUsers/i.test(name));
+        if (isUserRow) rows.add(element);
+    }
+    return [...rows];
+}
+
+function getVoiceUnreadStatusPlacement(row) {
+    const nameElement = row.querySelector('[class*="username_"], [class^="username_"], [class*="name_"], [class^="name_"]');
+    const rowRect = row.getBoundingClientRect();
+    let bestContainer = null;
+    let bestScore = -Infinity;
+    const candidates = row.querySelectorAll('[class*="icons_"], [class^="icons_"], [class*="iconGroup_"], [class^="iconGroup_"], [class*="status_"], [class^="status_"], [class*="actions_"], [class^="actions_"]');
+
+    for (const candidate of candidates) {
+        if (candidate.classList.contains("qw-voice-unread-status-slot") || candidate.closest(".qw-root")) continue;
+        if (nameElement && (candidate === nameElement || candidate.contains(nameElement))) continue;
+        const className = [...candidate.classList].join(" ");
+        const rect = candidate.getBoundingClientRect();
+        let score = 0;
+        if (/icons?/i.test(className)) score += 8;
+        if (/voice/i.test(className)) score += 3;
+        if (/status|actions?/i.test(className)) score += 2;
+        if (candidate.querySelector('svg, [class*="live"], [aria-label*="mute" i], [aria-label*="deaf" i]')) score += 5;
+        if (rect.width > 0 && rect.width < Math.max(140, rowRect.width * 0.5)) score += 2;
+        if (rowRect.width > 0 && rect.right >= rowRect.left + rowRect.width * 0.55) score += 3;
+        if (candidate.querySelector("img")) score -= 6;
+        if (score > bestScore) {
+            bestScore = score;
+            bestContainer = candidate;
+        }
+    }
+
+    const content = row.querySelector('[class*="content_"], [class^="content_"]') || row.firstElementChild || row;
+    if (!bestContainer || bestScore < 5) {
+        const statusSignal = row.querySelector('[class*="live"], [aria-label*="mute" i], [aria-label*="deaf" i]');
+        if (statusSignal && content.contains(statusSignal)) {
+            let statusBranch = statusSignal;
+            while (statusBranch.parentElement && statusBranch.parentElement !== content) statusBranch = statusBranch.parentElement;
+            if (statusBranch.parentElement === content) return { container: content, beforeNode: statusBranch };
+        }
+
+        bestContainer = row.querySelector(":scope .qw-voice-unread-status-slot");
+        if (!bestContainer) {
+            bestContainer = document.createElement("span");
+            bestContainer.className = "qw-voice-unread-status-slot";
+            content.appendChild(bestContainer);
+        }
+    }
+
+    const beforeNode = [...bestContainer.children].find(child => !child.classList.contains("qw-voice-unread-dot")) || null;
+    return { container: bestContainer, beforeNode };
+}
+
+function getVoiceUnreadUserColor(row, userId, voiceChannelId) {
+    const isUsableColor = value => {
+        if (typeof value !== "string" || !value.trim() || value === "transparent" || value === "rgba(0, 0, 0, 0)") return false;
+        return typeof window.CSS?.supports !== "function" || window.CSS.supports("color", value);
+    };
+
+    const ChannelStore = getStore("ChannelStore", "getChannel");
+    const GuildMemberStore = getStore("GuildMemberStore", "getMember", "getMembers", "getNick");
+    const voiceChannel = ChannelStore?.getChannel?.(voiceChannelId);
+    const guildId = voiceChannel?.guild_id || voiceChannel?.guildId;
+    const member = guildId && GuildMemberStore?.getMember?.(guildId, userId);
+    const roleColor = member?.colorString || member?.colorStrings?.primaryColor;
+    if (isUsableColor(roleColor)) return roleColor.trim();
+
+    const nameElement = row.querySelector('[class*="username_"], [class^="username_"], [class*="name_"], [class^="name_"]');
+    const displayedColor = nameElement ? getComputedStyle(nameElement).color : "";
+    return isUsableColor(displayedColor) ? displayedColor.trim() : "#f23f43";
+}
+
+function clearVoiceUnreadDom() {
+    document.querySelectorAll(".qw-voice-unread-dot").forEach(dot => dot.remove());
+    document.querySelectorAll(".qw-voice-unread-status-slot").forEach(slot => slot.remove());
+    document.querySelectorAll('[data-qw-voice-unread-hidden="true"]').forEach(element => element.removeAttribute("data-qw-voice-unread-hidden"));
+    document.querySelectorAll('[data-qw-voice-unread-empty="true"]').forEach(element => element.removeAttribute("data-qw-voice-unread-empty"));
+}
+
+function syncVoiceUnreadDots(activeUnreads, currentVoiceChannelId) {
+    for (const dot of document.querySelectorAll(".qw-voice-unread-dot")) {
+        const userId = dot.dataset.qwUserId;
+        const row = dot.closest('[class*="voiceUser"]');
+        if (!userId || !activeUnreads.has(userId) || !row || String(getUserId(row)) !== userId) dot.remove();
+    }
+
+    const VoiceStateStore = getStore("VoiceStateStore", "getVoiceStateForUser");
+    for (const row of getVoiceUserRows()) {
+        const userId = getUserId(row);
+        if (!userId || !activeUnreads.has(String(userId))) continue;
+        const voiceState = VoiceStateStore?.getVoiceStateForUser?.(userId);
+        if (String(voiceState?.channelId || "") !== String(currentVoiceChannelId || "")) continue;
+
+        const existingDots = [...row.querySelectorAll(".qw-voice-unread-dot")];
+        const dot = existingDots.shift() || document.createElement("span");
+        existingDots.forEach(duplicate => duplicate.remove());
+        dot.className = "qw-voice-unread-dot";
+        if (dot.dataset.qwUserId !== String(userId)) dot.dataset.qwUserId = String(userId);
+        dot.setAttribute("aria-hidden", "true");
+        dot.title = "Unread direct message";
+        const userColor = getVoiceUnreadUserColor(row, userId, currentVoiceChannelId);
+        if (dot.style.getPropertyValue("--qw-voice-unread-color") !== userColor) dot.style.setProperty("--qw-voice-unread-color", userColor);
+
+        const { container, beforeNode } = getVoiceUnreadStatusPlacement(row);
+        if (dot.parentElement !== container || dot.nextElementSibling !== beforeNode) container.insertBefore(dot, beforeNode);
+        for (const slot of row.querySelectorAll(".qw-voice-unread-status-slot")) {
+            if (slot !== container && !slot.children.length) slot.remove();
+        }
+    }
+
+    document.querySelectorAll(".qw-voice-unread-status-slot:empty").forEach(slot => slot.remove());
+}
+
+function clearPendingVoiceUnreadAck(channelId, queue = false) {
+    channelId = String(channelId || "");
+    const pending = pendingVoiceUnreadAcks.get(channelId);
+    if (!pending) return;
+    clearTimeout(pending.timer);
+    pendingVoiceUnreadAcks.delete(channelId);
+    if (queue) queueVoiceUnreadSync();
+}
+
+function beginPendingVoiceUnreadAck(userId, channelId, messageId) {
+    channelId = String(channelId);
+    clearPendingVoiceUnreadAck(channelId);
+    const pending = {
+        userId: String(userId),
+        channelId,
+        messageId: String(messageId),
+        timer: setTimeout(() => clearPendingVoiceUnreadAck(channelId, true), VOICE_UNREAD_ACK_GRACE_MS)
+    };
+    pendingVoiceUnreadAcks.set(channelId, pending);
+}
+
+function syncUnreadDMList(activeUnreads) {
+    const container = document.getElementById("guild-list-unread-dms");
+    const desiredHidden = new Set();
+    const channelItems = [];
+    const ChannelStore = getStore("ChannelStore", "getChannel");
+
+    if (container && ChannelStore?.getChannel) {
+        for (const navElement of container.querySelectorAll('[data-list-item-id^="guildsnav___"]')) {
+            const rawId = navElement.getAttribute("data-list-item-id");
+            if (!rawId || rawId === "guildsnav___home") continue;
+            const channelId = rawId.replace("guildsnav___", "");
+            const userId = getDirectMessageRecipientId(ChannelStore.getChannel(channelId));
+            const item = navElement.closest('[class*="listItem"]') || navElement.parentElement || navElement;
+            channelItems.push(item);
+            const isActiveVoiceUnread = userId && activeUnreads.get(userId)?.channelId === String(channelId);
+            if (isActiveVoiceUnread || pendingVoiceUnreadAcks.has(String(channelId))) desiredHidden.add(item);
+        }
+    }
+
+    for (const element of document.querySelectorAll('[data-qw-voice-unread-hidden="true"]')) {
+        if (!desiredHidden.has(element)) element.removeAttribute("data-qw-voice-unread-hidden");
+    }
+    for (const element of desiredHidden) {
+        if (element.getAttribute("data-qw-voice-unread-hidden") !== "true") element.setAttribute("data-qw-voice-unread-hidden", "true");
+    }
+
+    if (container) {
+        const allHidden = channelItems.length > 0 && channelItems.every(item => desiredHidden.has(item));
+        if (allHidden && container.getAttribute("data-qw-voice-unread-empty") !== "true") container.setAttribute("data-qw-voice-unread-empty", "true");
+        else if (!allHidden && container.hasAttribute("data-qw-voice-unread-empty")) container.removeAttribute("data-qw-voice-unread-empty");
+    }
+}
+
+function syncVoiceUnreadNotifications() {
+    if (!pluginRunning) return;
+    const ChannelStore = getStore("ChannelStore", "getDMFromUserId", "getChannel");
+    const ReadStateStore = getStore("ReadStateStore", "hasUnread", "lastMessageId");
+    const VoiceStateStore = getStore("VoiceStateStore", "getVoiceStateForUser");
+    const currentUser = getStore("UserStore", "getCurrentUser")?.getCurrentUser?.();
+    const currentVoiceChannelId = getCurrentVoiceChannelId();
+    const activeUnreads = new Map();
+
+    if (ChannelStore && ReadStateStore && VoiceStateStore && currentUser) {
+        let userIds = [];
+        if (typeof ChannelStore.getDMUserIds === "function") userIds = ChannelStore.getDMUserIds() || [];
+        else if (typeof ChannelStore.getMutableDMsByUserIds === "function") userIds = Object.keys(ChannelStore.getMutableDMsByUserIds() || {});
+
+        for (const rawUserId of userIds) {
+            const userId = String(rawUserId);
+            if (userId === String(currentUser.id)) continue;
+            const channelId = ChannelStore.getDMFromUserId?.(userId);
+            const channel = channelId && ChannelStore.getChannel?.(channelId);
+            if (!channelId || !getDirectMessageRecipientId(channel)) continue;
+            const messageId = ReadStateStore.lastMessageId?.(channelId) || channel.lastMessageId || channel.last_message_id || null;
+            const pendingAck = pendingVoiceUnreadAcks.get(String(channelId));
+            if (pendingAck && messageId && String(messageId) !== pendingAck.messageId) clearPendingVoiceUnreadAck(channelId);
+            if (!ReadStateStore.hasUnread?.(channelId)) continue;
+            if (pendingVoiceUnreadAcks.has(String(channelId))) continue;
+            const voiceState = VoiceStateStore.getVoiceStateForUser?.(userId);
+            if (!currentVoiceChannelId || String(voiceState?.channelId || "") !== currentVoiceChannelId) continue;
+            activeUnreads.set(userId, {
+                channelId: String(channelId),
+                messageId
+            });
+        }
+    }
+
+    routedVoiceUnreads.clear();
+    for (const [userId, unread] of activeUnreads) routedVoiceUnreads.set(userId, unread);
+    syncVoiceUnreadDots(activeUnreads, currentVoiceChannelId);
+    syncUnreadDMList(activeUnreads);
+}
+
+function queueVoiceUnreadSync() {
+    if (!pluginRunning || voiceUnreadSyncFrame) return;
+    voiceUnreadSyncFrame = requestAnimationFrame(() => {
+        voiceUnreadSyncFrame = 0;
+        try { syncVoiceUnreadNotifications(); }
+        catch (err) { console.error("[MBDM] Voice unread sync failed:", err); }
+    });
+}
+
+function startVoiceUnreadNotifications() {
+    const stores = new Set([
+        getStore("ChannelStore", "getDMFromUserId", "getChannel"),
+        getStore("ReadStateStore", "hasUnread", "lastMessageId"),
+        getStore("VoiceStateStore", "getVoiceStateForUser"),
+        getStore("GuildMemberStore", "getMember", "getMembers", "getNick"),
+        getStore("SelectedChannelStore", "getVoiceChannelId")
+    ].filter(Boolean));
+
+    for (const store of stores) {
+        if (typeof store.addChangeListener !== "function" || typeof store.removeChangeListener !== "function") continue;
+        store.addChangeListener(queueVoiceUnreadSync);
+        voiceUnreadStoreCleanups.push(() => store.removeChangeListener(queueVoiceUnreadSync));
+    }
+    queueVoiceUnreadSync();
+}
+
+function stopVoiceUnreadNotifications() {
+    cancelAnimationFrame(voiceUnreadSyncFrame);
+    voiceUnreadSyncFrame = 0;
+    while (voiceUnreadStoreCleanups.length) {
+        try { voiceUnreadStoreCleanups.pop()(); } catch (err) {}
+    }
+    for (const channelId of [...pendingVoiceUnreadAcks.keys()]) clearPendingVoiceUnreadAck(channelId);
+    routedVoiceUnreads.clear();
+    clearVoiceUnreadDom();
+}
+
+function acknowledgeDirectMessageForUser(userId, preferredChannelId = null) {
+    userId = String(userId || "");
+    if (!userId) return false;
+
+    const ChannelStore = getStore("ChannelStore", "getDMFromUserId", "getChannel");
+    const ReadStateStore = getStore("ReadStateStore", "hasUnread", "lastMessageId");
+    const unread = routedVoiceUnreads.get(userId);
+    const directChannelId = ChannelStore?.getDMFromUserId?.(userId);
+    let channelId = String(preferredChannelId || unread?.channelId || directChannelId || "");
+    let channel = channelId && ChannelStore?.getChannel?.(channelId);
+
+    if (!channelId || (channel && getDirectMessageRecipientId(channel) !== userId)) {
+        channelId = String(directChannelId || "");
+        channel = channelId && ChannelStore?.getChannel?.(channelId);
+    }
+    if (!channelId || (channel && getDirectMessageRecipientId(channel) !== userId)) return false;
+
+    const messageId = ReadStateStore?.lastMessageId?.(channelId)
+        || channel?.lastMessageId
+        || channel?.last_message_id
+        || (unread?.channelId === channelId ? unread.messageId : null);
+    const FluxDispatcher = getStore("FluxDispatcher", "dispatch", "subscribe");
+    if (!messageId || !FluxDispatcher?.dispatch) return false;
+
+    beginPendingVoiceUnreadAck(userId, channelId, messageId);
+    try {
+        FluxDispatcher.dispatch({
+            type: "BULK_ACK",
+            context: "APP",
+            channels: [{ channelId, messageId, readStateType: 0 }]
+        });
+    } catch (err) {
+        clearPendingVoiceUnreadAck(channelId, true);
+        console.error("[MBDM] Failed to acknowledge unread DM:", err);
+        return false;
+    }
+    routedVoiceUnreads.delete(userId);
+    document.querySelectorAll(`.qw-voice-unread-dot[data-qw-user-id="${userId}"]`).forEach(dot => dot.remove());
+    queueVoiceUnreadSync();
+    return true;
+}
+
+function acknowledgeVoiceUnreadForUser(userId) {
+    userId = String(userId || "");
+    const unread = routedVoiceUnreads.get(userId);
+    return unread ? acknowledgeDirectMessageForUser(userId, unread.channelId) : false;
+}
+
 function handleUnreadDMItemClick(e, target, dmsContainer) {
     if (target.closest?.('[data-list-item-id="guildsnav___home"], [data-guilds-bar-home="true"], .tutorialContainer__1f388, a[href="/channels/@me"]')) {
         return;
@@ -3355,6 +3991,7 @@ function handleUnreadDMItemClick(e, target, dmsContainer) {
     e.stopPropagation();
     e.stopImmediatePropagation();
     if (e.type !== "click") return;
+    acknowledgeDirectMessageForUser(userId, channelId);
     if (openNativeProfile(userId, { channelId, guildId: null, anchor: target })) return;
     // Bootstrap from Discord's own profile when its lazy native renderer has
     // not been seen yet. This never navigates the conversation into the DM.
@@ -3377,6 +4014,7 @@ function handleTriggerToggle(event) {
     const userId = trigger.getAttribute("data-user-id") || getUserId(target) || getUserId(trigger);
     const currentUser = getStore("UserStore", "getCurrentUser")?.getCurrentUser?.();
     if (!userId || String(userId) === String(currentUser?.id)) return;
+    acknowledgeVoiceUnreadForUser(userId);
     if (!openNativeProfile(userId, { anchor: trigger })) return;
     event.preventDefault();
     event.stopImmediatePropagation();
@@ -3411,7 +4049,9 @@ async function inspectNativeTextbox(textbox) {
         if (descriptor) {
             nativeProfileDescriptor ||= makeReusableNativeDescriptor(descriptor);
             const nativeClose = getNativePopoutClose(outer);
-            if (openNativeProfile(userId, { anchor: outer, nativeCapture: true, guildId: descriptor.props.guildId ?? null, profileChannelId: descriptor.props.channelId }, descriptor)) {
+            const captureOptions = { anchor: outer, nativeCapture: true, profileChannelId: descriptor.props.channelId };
+            if (Object.prototype.hasOwnProperty.call(descriptor.props, "guildId")) captureOptions.guildId = descriptor.props.guildId;
+            if (openNativeProfile(userId, captureOptions, descriptor)) {
                 if (nativeClose) nativeClose();
                 return true;
             }
@@ -3436,15 +4076,28 @@ async function inspectNativeTextbox(textbox) {
         outer.dataset.qwManaged = "true";
         outer.dataset.qwPositionLayer = "true";
         positionProfilePopout(outer, sessionStack.length);
-        const session = new WhisperSession(nativeFooter, userId, channelId, username);
-        const onPointerDown = () => bringToFront(userId);
-        activeSessions.set(userId, { userId, outer, session, attributes, nativeClose: getNativePopoutClose(outer), onPointerDown });
+        acknowledgeDirectMessageForUser(userId, channelId);
+        const shouldActivateWhenReady = !focusedProfileRequest || focusedProfileRequest === String(userId);
+        const session = new WhisperSession(nativeFooter, userId, channelId, username, owned.context?.guildId);
+        const onPointerActivate = event => {
+            // Switch ownership before the browser resolves focus so a pending
+            // request from another profile cannot pull the caret away.
+            activateProfile(userId, false);
+            const input = event.target?.closest?.(".qw-input");
+            if (input && session.ui?.contains(input) && document.activeElement !== input) {
+                input.focus({ preventScroll: true });
+            }
+        };
+        const onFocusActivate = () => activateProfile(userId, false);
+        activeSessions.set(userId, { userId, outer, session, attributes, nativeClose: getNativePopoutClose(outer), onPointerActivate, onFocusActivate });
         sessionStack.push(userId);
-        outer.addEventListener("pointerdown", onPointerDown, true);
+        outer.addEventListener("pointerdown", onPointerActivate, true);
+        outer.addEventListener("focusin", onFocusActivate, true);
         attachDraggables(outer);
         attachFloatingGear(outer);
         attachTopCloseBtn(outer, userId);
-        bringToFront(userId);
+        if (shouldActivateWhenReady) activateProfile(userId, true);
+        else bringToFront(userId);
         return true;
     } catch (err) {
         console.error("[MBDM] Native profile mount failed:", err);
@@ -3509,6 +4162,7 @@ function scan() {
         if (outer.querySelector(".qw-root") || pendingNativeMounts.has(outer)) continue;
         inspectNativeTextbox(tb).catch(err => console.error("[MBDM] Profile inspection failed:", err));
     }
+    queueVoiceUnreadSync();
 }
 
 const plugin = _definePlugin({
@@ -3520,11 +4174,15 @@ const plugin = _definePlugin({
 
     start() {
         pluginRunning = true;
+        window.addEventListener("focusin", handleProfileComposerFocus, true);
         if (getStoredConfig().nativeSplitLayoutVersion !== 1) {
             saveStoredConfig({ nativeSplitLayoutVersion: 1, ...DEFAULT_CONFIG });
         }
         injectStyles();
         enforcePopoutWidth();
+        startVoiceUnreadNotifications();
+        startConversationRoleColors();
+        startGlobalProfileFileDrop();
         observer = new MutationObserver(() => {
             scan();
         });
@@ -3539,6 +4197,11 @@ const plugin = _definePlugin({
 
     stop() {
         pluginRunning = false;
+        window.removeEventListener("focusin", handleProfileComposerFocus, true);
+        stopVoiceUnreadNotifications();
+        stopConversationRoleColors();
+        stopGlobalProfileFileDrop();
+        cancelPendingProfileFocus();
         focusedProfileRequest = null;
         pendingNativeMounts.clear();
         pendingProfileRequests.clear();
