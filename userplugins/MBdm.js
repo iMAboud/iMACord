@@ -536,12 +536,6 @@ function positionOwnedOverlay(element, left, top) {
     if (Math.abs(top - rect.top) > .5) element.style.setProperty("top", ((parseFloat(style.top) || 0) + (top - rect.top) / (scaleY || 1)) + "px", "important");
 }
 
-function getNativeOverlayHost(outer) {
-    // Use the shared positioning layer so native profile scrolling cannot
-    // clip the plugin's settings or full-window image viewer.
-    return outer?.parentElement || document.body;
-}
-
 function getNativeProfileFrame(outer) {
     return outer.querySelector('[role="dialog"]') || outer.querySelector(".user-profile-popout") || outer;
 }
@@ -1205,25 +1199,59 @@ const PLUGIN_STYLES = `
 .qw-reply-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px; }
 .qw-attachments { margin-top: 4px; display: flex; flex-direction: column; gap: 4px; }
 .qw-msg-img { max-width: 100%; max-height: 130px; border-radius: 6px; display: block; object-fit: cover; cursor: pointer; }
+.qw-msg-video { display: block; width: 100%; max-width: 100%; max-height: 220px; border-radius: 8px; background: #000; object-fit: contain; }
 .qw-msg-file { font-size: 12px; color: inherit; text-decoration: underline; }
+.qw-file-card, .qw-link-preview {
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+    padding: 9px !important;
+    border: 1px solid color-mix(in srgb, currentColor 18%, transparent) !important;
+    border-radius: 9px !important;
+    background: rgba(0, 0, 0, 0.2) !important;
+    color: inherit !important;
+    text-decoration: none !important;
+    cursor: pointer !important;
+    transition: background 0.15s, border-color 0.15s !important;
+}
+.qw-file-card:hover, .qw-link-preview:hover { background: rgba(255, 255, 255, 0.11) !important; border-color: color-mix(in srgb, currentColor 34%, transparent) !important; }
+.qw-file-icon, .qw-link-preview-icon { width: 34px !important; height: 34px !important; flex: 0 0 34px !important; display: grid !important; place-items: center !important; border-radius: 8px !important; background: rgba(255, 255, 255, 0.12) !important; }
+.qw-file-icon svg, .qw-link-preview-icon svg { width: 21px !important; height: 21px !important; fill: none !important; stroke: currentColor !important; stroke-width: 1.9 !important; stroke-linecap: round !important; stroke-linejoin: round !important; }
+.qw-file-info, .qw-link-preview-info { min-width: 0 !important; flex: 1 1 auto !important; display: flex !important; flex-direction: column !important; gap: 2px !important; }
+.qw-file-name, .qw-link-preview-title { overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important; font-size: 12px !important; font-weight: 650 !important; }
+.qw-file-meta, .qw-link-preview-provider { overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important; font-size: 10px !important; opacity: 0.68 !important; }
+.qw-file-type { flex: 0 0 auto !important; max-width: 48px !important; padding: 3px 6px !important; border-radius: 5px !important; background: rgba(255, 255, 255, 0.13) !important; font-size: 9px !important; font-weight: 750 !important; letter-spacing: .3px !important; overflow: hidden !important; text-overflow: ellipsis !important; }
+.qw-link-preview-thumb { width: 72px !important; height: 48px !important; flex: 0 0 72px !important; border-radius: 6px !important; object-fit: cover !important; background: rgba(0, 0, 0, 0.28) !important; }
+.qw-media-fallback { display: flex !important; align-items: center !important; gap: 8px !important; width: 100% !important; box-sizing: border-box !important; padding: 10px !important; border: 1px solid rgba(255, 255, 255, 0.14) !important; border-radius: 8px !important; background: rgba(0, 0, 0, 0.24) !important; }
+.qw-media-fallback-text { flex: 1 1 auto !important; min-width: 0 !important; font-size: 11px !important; opacity: .82 !important; }
+.qw-media-fallback-btn { width: 30px !important; height: 30px !important; flex: 0 0 30px !important; display: grid !important; place-items: center !important; padding: 0 !important; border: 1px solid rgba(255, 255, 255, 0.2) !important; border-radius: 7px !important; background: rgba(255, 255, 255, 0.1) !important; color: inherit !important; cursor: pointer !important; }
+.qw-media-fallback-btn svg { width: 16px !important; height: 16px !important; fill: none !important; stroke: currentColor !important; stroke-width: 2 !important; stroke-linecap: round !important; stroke-linejoin: round !important; pointer-events: none !important; }
 .qw-link {
     color: #38bdf8 !important;
     font-weight: 600 !important;
     text-decoration: underline !important;
     text-underline-offset: 3px !important;
     text-decoration-thickness: 1.5px !important;
-    word-break: break-all !important;
+    max-width: 100% !important;
     cursor: pointer !important;
     transition: all 0.15s ease !important;
     padding: 1px 4px !important;
     border-radius: 4px !important;
     background: rgba(56, 189, 248, 0.14) !important;
     border: 1px solid rgba(56, 189, 248, 0.25) !important;
-    display: inline-block !important;
-    max-width: 100% !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 4px !important;
     box-sizing: border-box !important;
     line-height: 1.35 !important;
+    vertical-align: bottom !important;
 }
+.qw-link-icon { width: 14px !important; height: 14px !important; flex: 0 0 14px !important; display: inline-flex !important; }
+.qw-link-icon svg { width: 14px !important; height: 14px !important; fill: none !important; stroke: currentColor !important; stroke-width: 2 !important; stroke-linecap: round !important; stroke-linejoin: round !important; }
+.qw-link-label { display: inline-block !important; max-width: 220px !important; overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important; }
 .qw-link:hover {
     color: #ffffff !important;
     background: rgba(56, 189, 248, 0.35) !important;
@@ -1670,15 +1698,16 @@ const PLUGIN_STYLES = `
     transform: translateX(16px) !important;
 }
 
-#qw-lightbox { position: fixed !important; inset: 0 !important; z-index: 2000000 !important; display: flex !important; align-items: center !important; justify-content: center !important; }
-.qw-lightbox-backdrop { position: absolute !important; inset: 0 !important; background: rgba(0, 0, 0, 0.85) !important; backdrop-filter: blur(8px) !important; cursor: zoom-out !important; }
-.qw-lightbox-content { position: relative !important; z-index: 2000001 !important; display: flex !important; flex-direction: column !important; align-items: center !important; max-width: 90vw !important; max-height: 90vh !important; }
-.qw-lightbox-img { max-width: 90vw !important; max-height: 80vh !important; border-radius: 8px !important; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.7) !important; object-fit: contain !important; cursor: default !important; }
-.qw-lightbox-actions { display: flex !important; align-items: center !important; gap: 12px !important; margin-top: 14px !important; }
-.qw-lightbox-btn { background: rgba(255, 255, 255, 0.15) !important; border: 1px solid rgba(255, 255, 255, 0.25) !important; color: #fff !important; font-size: 13px !important; font-weight: 500 !important; padding: 6px 14px !important; border-radius: 6px !important; cursor: pointer !important; display: inline-flex !important; align-items: center !important; gap: 6px !important; text-decoration: none !important; transition: background 0.15s, border-color 0.15s !important; }
-.qw-lightbox-btn:hover { background: rgba(255, 255, 255, 0.28) !important; border-color: rgba(255, 255, 255, 0.4) !important; }
-.qw-lightbox-close { background: rgba(255, 255, 255, 0.2) !important; border: none !important; color: #fff !important; font-size: 15px !important; border-radius: 50% !important; width: 32px !important; height: 32px !important; cursor: pointer !important; display: flex !important; align-items: center !important; justify-content: center !important; transition: background 0.15s !important; }
-.qw-lightbox-close:hover { background: #ed4245 !important; }
+#qw-lightbox { position: fixed !important; inset: 0 !important; z-index: 2000000 !important; display: flex !important; align-items: center !important; justify-content: center !important; overflow: hidden !important; pointer-events: auto !important; }
+.qw-lightbox-backdrop { position: absolute !important; inset: 0 !important; background: rgba(0, 0, 0, 0.85) !important; backdrop-filter: blur(8px) !important; cursor: zoom-out !important; pointer-events: auto !important; }
+.qw-lightbox-content { position: relative !important; z-index: 2000001 !important; display: flex !important; align-items: center !important; justify-content: center !important; pointer-events: auto !important; }
+.qw-lightbox-img { max-width: 50vw !important; max-height: 50vh !important; border-radius: 8px !important; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.7) !important; object-fit: contain !important; cursor: zoom-in !important; transform: scale(1); transform-origin: center center !important; transition: transform 0.12s ease-out !important; will-change: transform; user-select: none !important; -webkit-user-drag: none !important; }
+.qw-lightbox-actions { position: fixed !important; top: 16px !important; right: 16px !important; z-index: 2000002 !important; display: flex !important; align-items: center !important; gap: 8px !important; margin: 0 !important; padding: 6px !important; border: 1px solid rgba(255, 255, 255, 0.18) !important; border-radius: 10px !important; background: rgba(20, 20, 24, 0.72) !important; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45) !important; backdrop-filter: blur(10px) !important; pointer-events: auto !important; }
+.qw-lightbox-btn { width: 36px !important; height: 36px !important; padding: 0 !important; border: 1px solid rgba(255, 255, 255, 0.22) !important; border-radius: 8px !important; background: rgba(255, 255, 255, 0.12) !important; color: #fff !important; cursor: pointer !important; display: inline-flex !important; align-items: center !important; justify-content: center !important; text-decoration: none !important; transition: background 0.15s, border-color 0.15s, transform 0.15s !important; }
+.qw-lightbox-btn svg { width: 19px !important; height: 19px !important; fill: none !important; stroke: currentColor !important; stroke-width: 2 !important; stroke-linecap: round !important; stroke-linejoin: round !important; pointer-events: none !important; }
+.qw-lightbox-btn:hover { background: rgba(255, 255, 255, 0.26) !important; border-color: rgba(255, 255, 255, 0.42) !important; transform: translateY(-1px) !important; }
+.qw-lightbox-btn:focus-visible { outline: 2px solid #fff !important; outline-offset: 2px !important; }
+.qw-lightbox-close:hover { background: #ed4245 !important; border-color: #ed4245 !important; }
 `;
 
 
@@ -2381,13 +2410,252 @@ function openUrl(url) {
     } catch (e) {}
 }
 
-function formatContent(content) {
+const MESSAGE_URL_REGEX = /(https?:\/\/[^\s<]+[^<.,:;"')\]\s])/g;
+
+function isGifUrl(value) {
+    if (!value || typeof value !== "string") return false;
+    try {
+        return /\.gif$/i.test(new URL(value).pathname);
+    } catch (e) {
+        return /\.gif(?:$|[?#])/i.test(value);
+    }
+}
+
+function getMediaUrlKey(value) {
+    if (!value) return "";
+    try {
+        const parsed = new URL(value);
+        return `${parsed.hostname.toLowerCase()}${parsed.pathname}`;
+    } catch (e) {
+        return String(value).split(/[?#]/, 1)[0].toLowerCase();
+    }
+}
+
+function getUrlFilename(value) {
+    if (!value) return "";
+    try {
+        const pathname = new URL(value).pathname;
+        return decodeURIComponent(pathname.substring(pathname.lastIndexOf("/") + 1));
+    } catch (e) {
+        return String(value).split(/[?#]/, 1)[0].split("/").pop() || "";
+    }
+}
+
+function getFileExtension(value) {
+    const clean = String(value || "").toLowerCase().split(/[?#]/, 1)[0];
+    if (clean.endsWith(".tar.gz")) return "tar.gz";
+    const match = clean.match(/\.([a-z0-9]{1,8})$/i);
+    return match ? match[1].toLowerCase() : "";
+}
+
+const FILE_TYPE_GROUPS = {
+    archive: new Set(["rar", "zip", "7z", "tar", "tar.gz", "gz", "bz2", "xz"]),
+    pdf: new Set(["pdf"]),
+    word: new Set(["doc", "docx", "odt"]),
+    sheet: new Set(["xls", "xlsx", "csv", "ods"]),
+    presentation: new Set(["ppt", "pptx", "odp"]),
+    text: new Set(["txt", "md", "rtf", "log"]),
+    code: new Set(["js", "jsx", "ts", "tsx", "json", "html", "css", "xml", "py", "java", "c", "cpp", "h", "cs", "sh", "ps1", "sql"]),
+    executable: new Set(["exe", "msi", "apk", "dmg", "deb", "rpm"]),
+    image: new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "avif"]),
+    video: new Set(["mp4", "webm", "mov", "m4v", "ogv", "avi", "mkv"]),
+    audio: new Set(["mp3", "ogg", "wav", "m4a", "flac", "aac", "opus"])
+};
+
+function getFileDescriptor(filename = "", url = "", contentType = "") {
+    const name = filename || getUrlFilename(url) || "File";
+    const extension = getFileExtension(name || url);
+    const mime = String(contentType || "").toLowerCase();
+    let kind = "file";
+    for (const [candidate, extensions] of Object.entries(FILE_TYPE_GROUPS)) {
+        if (extensions.has(extension)) { kind = candidate; break; }
+    }
+    if (kind === "file") {
+        if (mime.startsWith("image/")) kind = "image";
+        else if (mime.startsWith("video/")) kind = "video";
+        else if (mime.startsWith("audio/")) kind = "audio";
+        else if (mime === "application/pdf") kind = "pdf";
+        else if (/zip|rar|compressed|archive/.test(mime)) kind = "archive";
+        else if (mime.startsWith("text/")) kind = "text";
+    }
+    const labels = { archive: extension || "archive", pdf: "PDF", word: "DOC", sheet: "SHEET", presentation: "PPT", text: "TEXT", code: "CODE", executable: "APP", image: "IMAGE", video: "VIDEO", audio: "AUDIO", file: "FILE" };
+    return { kind, extension, name, label: String(labels[kind] || extension || "FILE").toUpperCase() };
+}
+
+function formatFileSize(size) {
+    const value = Number(size);
+    if (!Number.isFinite(value) || value <= 0) return "";
+    if (value >= 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+    if (value >= 1024) return `${Math.max(1, Math.round(value / 1024))} KB`;
+    return `${value} B`;
+}
+
+function mediaIconSvg(kind) {
+    if (kind === "youtube" || kind === "video") return '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="m10 9 5 3-5 3Z"/></svg>';
+    if (kind === "audio") return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V6l10-2v12"/><circle cx="6" cy="18" r="3"/><circle cx="16" cy="16" r="3"/></svg>';
+    if (kind === "archive") return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v15H4zM4 9h16M10 5v4M14 5v4"/><path d="M9 13h6v3H9z"/></svg>';
+    if (kind === "pdf") return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2h8l4 4v16H6zM14 2v5h5"/><path d="M8 16h8M8 12h5"/></svg>';
+    if (kind === "word" || kind === "sheet" || kind === "presentation" || kind === "text") return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2h8l4 4v16H6zM14 2v5h5"/><path d="M9 12h6M9 16h6"/></svg>';
+    if (kind === "code") return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 8-4 4 4 4M16 8l4 4-4 4M14 4l-4 16"/></svg>';
+    if (kind === "executable") return '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="15" rx="2"/><path d="M3 9h18M7 7h.01M10 7h.01"/></svg>';
+    if (kind === "image") return '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m4 18 5-5 3 3 2-2 6 5"/></svg>';
+    if (kind === "discord") return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 7a13 13 0 0 1 8 0l2 9a13 13 0 0 1-4 2l-1-2a8 8 0 0 0 2-1 9 9 0 0 1-6 0 8 8 0 0 0 2 1l-1 2a13 13 0 0 1-4-2Z"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/></svg>';
+    return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a4 4 0 0 0 6 0l3-3a4 4 0 0 0-6-6l-2 2"/><path d="M14 10a4 4 0 0 0-6 0l-3 3a4 4 0 0 0 6 6l2-2"/></svg>';
+}
+
+function isDirectVideoUrl(value) {
+    return FILE_TYPE_GROUPS.video.has(getFileExtension(value));
+}
+
+function isDirectImageUrl(value) {
+    return FILE_TYPE_GROUPS.image.has(getFileExtension(value));
+}
+
+function getEmbedProxyUrls(media) {
+    return uniqueMediaUrls([media?.proxy_url, media?.proxyURL, media?.proxyUrl, media?.url]);
+}
+
+function getMessageUrls(content) {
+    if (!content) return [];
+    return Array.from(String(content).matchAll(new RegExp(MESSAGE_URL_REGEX.source, "g")), match => match[0]);
+}
+
+function findEmbedForUrl(url, msg) {
+    const embeds = Array.isArray(msg?.embeds) ? msg.embeds : [];
+    const key = getMediaUrlKey(url);
+    const exact = embeds.find(embed => [embed?.url, embed?.image?.url, embed?.video?.url, embed?.thumbnail?.url]
+        .some(candidate => getMediaUrlKey(candidate) === key));
+    if (exact) return exact;
+    const messageUrls = getMessageUrls(msg?.content);
+    if (messageUrls.length === 1 && embeds.length === 1) return embeds[0];
+    try {
+        const hostname = new URL(url).hostname.replace(/^www\./i, "");
+        return embeds.find(embed => {
+            try { return new URL(embed?.url).hostname.replace(/^www\./i, "") === hostname; } catch (e) { return false; }
+        }) || null;
+    } catch (e) {
+        return null;
+    }
+}
+
+function truncateLabel(value, max = 58) {
+    const text = String(value || "").replace(/\s+/g, " ").trim();
+    return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
+
+function getSiteInfo(url, embed = null) {
+    let hostname = "Link";
+    try { hostname = new URL(url).hostname.replace(/^www\./i, ""); } catch (e) {}
+    const host = hostname.toLowerCase();
+    if (host === "youtu.be" || host.endsWith("youtube.com")) return { name: "YouTube", kind: "youtube" };
+    if (host === "discord.gg" || host.endsWith("discord.com")) return { name: "Discord", kind: "discord" };
+    if (host.endsWith("github.com")) return { name: "GitHub", kind: "link" };
+    if (host.endsWith("tiktok.com")) return { name: "TikTok", kind: "video" };
+    if (host.endsWith("twitch.tv")) return { name: "Twitch", kind: "video" };
+    if (host.endsWith("instagram.com")) return { name: "Instagram", kind: "image" };
+    if (host === "x.com" || host.endsWith("twitter.com")) return { name: "X", kind: "link" };
+    return { name: embed?.provider?.name || hostname, kind: "link" };
+}
+
+function getLinkPresentation(url, msg) {
+    const embed = findEmbedForUrl(url, msg);
+    const descriptor = getFileDescriptor("", url, "");
+    if (descriptor.extension && descriptor.kind !== "file") {
+        return { label: `${descriptor.label} / ${truncateLabel(descriptor.name, 44)}`, kind: descriptor.kind, embed };
+    }
+    const site = getSiteInfo(url, embed);
+    let detail = embed?.title || "";
+    if (!detail && site.kind === "youtube") detail = "Video";
+    if (!detail && site.kind === "discord") detail = "Invite";
+    if (!detail) {
+        try {
+            const parsed = new URL(url);
+            detail = decodeURIComponent(parsed.pathname).replace(/^\/+|\/+$/g, "").split("/").filter(Boolean).pop() || "Link";
+        } catch (e) { detail = "Link"; }
+    }
+    return { label: `${site.name} / ${truncateLabel(detail, 48)}`, kind: site.kind, embed };
+}
+
+function extractGifUrls(content) {
+    if (!content) return [];
+    return (String(content).match(MESSAGE_URL_REGEX) || []).filter(isGifUrl);
+}
+
+function stripGifUrls(content) {
     if (!content) return "";
-    const escaped = escapeHtml(content);
-    const urlRegex = /(https?:\/\/[^\s<]+[^<.,:;"')\]\s])/g;
-    return escaped.replace(urlRegex, url => {
-        return `<a href="${url}" class="qw-link" title="${url}" target="_blank" rel="noreferrer">${url}</a>`;
-    }).replace(/\n/g, "<br>");
+    return String(content)
+        .replace(MESSAGE_URL_REGEX, url => isGifUrl(url) ? "" : url)
+        .replace(/[ \t]+\n/g, "\n")
+        .replace(/\n[ \t]+/g, "\n")
+        .replace(/[ \t]{2,}/g, " ")
+        .trim();
+}
+
+function uniqueMediaUrls(urls) {
+    const seen = new Set();
+    return urls.filter(url => {
+        if (!url || seen.has(url)) return false;
+        seen.add(url);
+        return true;
+    });
+}
+
+function collectMessageGifSources(msg) {
+    const directUrls = extractGifUrls(msg?.content);
+    const hasGifAttachment = Array.isArray(msg?.attachments) && msg.attachments.some(att =>
+        String(att?.content_type || att?.contentType || "").toLowerCase() === "image/gif" || isGifUrl(att?.url)
+    );
+
+    const embedGroups = [];
+    for (const embed of Array.isArray(msg?.embeds) ? msg.embeds : []) {
+        const candidates = [
+            embed?.image?.proxy_url,
+            embed?.image?.proxyURL,
+            embed?.image?.proxyUrl,
+            embed?.image?.url,
+            embed?.thumbnail?.proxy_url,
+            embed?.thumbnail?.proxyURL,
+            embed?.thumbnail?.proxyUrl,
+            embed?.thumbnail?.url,
+            embed?.video?.proxy_url,
+            embed?.video?.proxyURL,
+            embed?.video?.proxyUrl,
+            embed?.video?.url,
+            isGifUrl(embed?.url) ? embed.url : ""
+        ];
+        if (candidates.some(isGifUrl) || isGifUrl(embed?.url)) {
+            embedGroups.push(uniqueMediaUrls(candidates));
+        }
+    }
+
+    if (directUrls.length) {
+        return directUrls.map(url => {
+            const key = getMediaUrlKey(url);
+            const related = embedGroups.find(group => group.some(candidate => getMediaUrlKey(candidate) === key))
+                || (directUrls.length === 1 && embedGroups.length === 1 ? embedGroups[0] : []);
+            return uniqueMediaUrls([...related, url]);
+        });
+    }
+
+    // Attachments are rendered by the normal attachment path with their own
+    // proxy fallback, so do not render their generated embed a second time.
+    if (hasGifAttachment) return [];
+    return embedGroups;
+}
+
+function formatContent(content, msg = null) {
+    if (!content) return "";
+    let html = "";
+    let lastIndex = 0;
+    for (const match of String(content).matchAll(new RegExp(MESSAGE_URL_REGEX.source, "g"))) {
+        const url = match[0];
+        const presentation = getLinkPresentation(url, msg);
+        html += escapeHtml(String(content).slice(lastIndex, match.index));
+        html += `<a href="${escapeHtml(url)}" class="qw-link" title="${escapeHtml(url)}" target="_blank" rel="noreferrer"><span class="qw-link-icon">${mediaIconSvg(presentation.kind)}</span><span class="qw-link-label">${escapeHtml(presentation.label)}</span></a>`;
+        lastIndex = match.index + url.length;
+    }
+    html += escapeHtml(String(content).slice(lastIndex));
+    return html.replace(/\n/g, "<br>");
 }
 
 function formatTime(timestamp) {
@@ -2400,12 +2668,12 @@ function triggerBlobDownload(blob, filename) {
         const blobUrl = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = blobUrl;
-        a.download = filename || "image.png";
+        a.download = filename || "download.bin";
         document.body.appendChild(a);
         a.click();
         a.remove();
         setTimeout(() => URL.revokeObjectURL(blobUrl), 2000);
-        showToastNotification("✅ Downloaded image!");
+        showToastNotification("✅ Downloaded file!");
     } catch (err) {
         console.error("[MBDM] triggerBlobDownload error:", err);
     }
@@ -2416,8 +2684,7 @@ async function downloadImage(url, filename = "") {
     try {
         if (!filename) {
             const clean = url.split("?")[0];
-            filename = clean.substring(clean.lastIndexOf("/") + 1) || `image_${Date.now()}.png`;
-            if (!filename.includes(".")) filename += ".png";
+            filename = clean.substring(clean.lastIndexOf("/") + 1) || `download_${Date.now()}`;
         }
 
         const fs = window.require?.("fs");
@@ -2450,7 +2717,7 @@ async function downloadImage(url, filename = "") {
                     console.error("[MBDM] File write failed, attempting dialog:", err);
                     if (window.DiscordNative?.fileManager?.saveWithDialog) {
                         window.DiscordNative.fileManager.saveWithDialog(buffer, filename);
-                        showToastNotification("✅ Saved image!");
+                        showToastNotification("✅ Saved file!");
                     } else if (blob) {
                         triggerBlobDownload(blob, filename);
                     } else {
@@ -2463,7 +2730,7 @@ async function downloadImage(url, filename = "") {
 
         if (window.DiscordNative?.fileManager?.saveWithDialog && buffer) {
             window.DiscordNative.fileManager.saveWithDialog(buffer, filename);
-            showToastNotification("✅ Saved image!");
+            showToastNotification("✅ Saved file!");
             return;
         }
 
@@ -2488,23 +2755,32 @@ function openLightbox(url, nativeProfile = null) {
 
     const overlay = document.createElement("div");
     overlay.id = "qw-lightbox";
+    overlay.setAttribute("role", "dialog");
+    overlay.setAttribute("aria-modal", "true");
+    overlay.setAttribute("aria-label", "Image preview");
     overlay.innerHTML = `
         <div class="qw-lightbox-backdrop"></div>
         <div class="qw-lightbox-content">
-            <img src="${url}" class="qw-lightbox-img" title="Click outside to close | Middle-click to open in browser" />
-            <div class="qw-lightbox-actions">
-                <button class="qw-lightbox-btn" id="qw-lightbox-download">📥 Download Image</button>
-                <a href="${url}" target="_blank" rel="noreferrer" class="qw-lightbox-btn qw-lightbox-link">🌐 Open in Browser</a>
-                <button class="qw-lightbox-close" title="Close (Esc)">✕</button>
-            </div>
+            <img class="qw-lightbox-img" alt="Image preview" title="Mouse wheel: zoom | Middle-click: open in browser" draggable="false" />
+        </div>
+        <div class="qw-lightbox-actions" role="toolbar" aria-label="Image actions">
+            <button type="button" class="qw-lightbox-btn" id="qw-lightbox-download" title="Download image" aria-label="Download image">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 5-5m-5 5-5-5M5 20h14" /></svg>
+            </button>
+            <button type="button" class="qw-lightbox-btn qw-lightbox-link" title="Open in browser" aria-label="Open in browser">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9" /><path d="M19 13v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h6" /></svg>
+            </button>
+            <button type="button" class="qw-lightbox-btn qw-lightbox-close" title="Close (Esc)" aria-label="Close image preview">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
+            </button>
         </div>
     `;
 
-    const backdrop = overlay.querySelector(".qw-lightbox-backdrop");
     const closeBtn = overlay.querySelector(".qw-lightbox-close");
     const openLink = overlay.querySelector(".qw-lightbox-link");
     const downloadBtn = overlay.querySelector("#qw-lightbox-download");
     const imgEl = overlay.querySelector(".qw-lightbox-img");
+    imgEl.src = url;
 
     if (downloadBtn) {
         downloadBtn.addEventListener("click", e => {
@@ -2522,6 +2798,14 @@ function openLightbox(url, nativeProfile = null) {
         });
     }
 
+    if (closeBtn) {
+        closeBtn.addEventListener("click", e => {
+            e.preventDefault();
+            e.stopPropagation();
+            cleanup();
+        });
+    }
+
     if (imgEl) {
         imgEl.addEventListener("auxclick", e => {
             if (e.button === 1) {
@@ -2530,10 +2814,24 @@ function openLightbox(url, nativeProfile = null) {
                 openUrl(url);
             }
         });
+        imgEl.addEventListener("wheel", handleWheel, { passive: false });
+    }
+
+    let zoomScale = 1;
+
+    function handleWheel(e) {
+        if (!e.deltaY) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const direction = e.deltaY < 0 ? 0.1 : -0.1;
+        zoomScale = Math.min(3, Math.max(0.5, Number((zoomScale + direction).toFixed(2))));
+        imgEl.style.setProperty("transform", `scale(${zoomScale})`, "important");
+        imgEl.style.setProperty("cursor", zoomScale > 1 ? "zoom-out" : "zoom-in", "important");
     }
 
     function cleanup() {
         window.removeEventListener("keydown", handleKey, true);
+        imgEl?.removeEventListener("wheel", handleWheel);
         overlay.remove();
         if (activeLightboxCleanup === cleanup) {
             activeLightboxCleanup = null;
@@ -2542,12 +2840,10 @@ function openLightbox(url, nativeProfile = null) {
     }
 
     function handleOverlayClick(e) {
-        // Let the target action run before isolating the overlay event.
         e.stopPropagation();
-        if (e.target === backdrop || e.target === closeBtn || closeBtn.contains(e.target)) {
-            e.preventDefault();
-            cleanup();
-        }
+        if (e.target.closest?.(".qw-lightbox-img, .qw-lightbox-actions")) return;
+        e.preventDefault();
+        cleanup();
     }
 
     function handleKey(e) {
@@ -2559,14 +2855,13 @@ function openLightbox(url, nativeProfile = null) {
 
     activeLightboxCleanup = cleanup;
     activeLightboxOwner = nativeProfile;
+    overlay.addEventListener("pointerdown", e => e.stopPropagation());
     overlay.addEventListener("mousedown", e => e.stopPropagation());
     overlay.addEventListener("click", handleOverlayClick);
     window.addEventListener("keydown", handleKey, true);
-    getNativeOverlayHost(nativeProfile).appendChild(overlay);
-    overlay.style.setProperty("inset", "auto", "important");
-    overlay.style.setProperty("width", window.innerWidth + "px", "important");
-    overlay.style.setProperty("height", window.innerHeight + "px", "important");
-    positionOwnedOverlay(overlay, 0, 0);
+    // Mount at document level so profile portal shells with pointer-events:none
+    // cannot make the full-window viewer visible but non-interactive.
+    document.body.appendChild(overlay);
 }
 
 let activeDragCleanup = null;
@@ -2713,6 +3008,243 @@ function attachDraggables(popout) {
     });
 }
 
+function createMessageImage(url, fallbackLabel = "", alternativeUrls = []) {
+    const sources = uniqueMediaUrls([url, ...alternativeUrls]);
+    let sourceIndex = 0;
+    const img = document.createElement("img");
+    img.className = "qw-msg-img";
+    img.loading = "lazy";
+    img.alt = fallbackLabel || "Image attachment";
+    img.title = "Left-click: View | Middle-click: Open in Browser";
+    img.addEventListener("click", e => {
+        e.stopPropagation();
+        openLightbox(sources[sourceIndex], getChatProfileOwner(img));
+    });
+    img.addEventListener("auxclick", e => {
+        if (e.button === 1) {
+            e.preventDefault();
+            e.stopPropagation();
+            openUrl(sources[sourceIndex]);
+        }
+    });
+
+    img.addEventListener("error", () => {
+        if (sourceIndex + 1 < sources.length) {
+            sourceIndex += 1;
+            img.src = sources[sourceIndex];
+            return;
+        }
+
+        if (fallbackLabel) {
+            const link = document.createElement("a");
+            const fallbackUrl = sources.find(isGifUrl) || sources[0];
+            link.href = fallbackUrl;
+            link.target = "_blank";
+            link.rel = "noreferrer";
+            link.className = "qw-msg-file";
+            link.textContent = `↗ ${fallbackLabel}`;
+            link.addEventListener("click", e => {
+                e.preventDefault();
+                e.stopPropagation();
+                openUrl(fallbackUrl);
+            });
+            img.replaceWith(link);
+        }
+    });
+
+    img.src = sources[0];
+    return img;
+}
+
+function createMediaFallback(url, filename = "") {
+    const box = document.createElement("div");
+    box.className = "qw-media-fallback";
+
+    const text = document.createElement("span");
+    text.className = "qw-media-fallback-text";
+    text.textContent = "This media cannot be played here";
+
+    const openBtn = document.createElement("button");
+    openBtn.type = "button";
+    openBtn.className = "qw-media-fallback-btn";
+    openBtn.title = "Open in browser";
+    openBtn.setAttribute("aria-label", "Open media in browser");
+    openBtn.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9"/><path d="M19 13v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h6"/></svg>';
+    openBtn.addEventListener("click", event => {
+        event.preventDefault();
+        event.stopPropagation();
+        openUrl(url);
+    });
+
+    const downloadBtn = document.createElement("button");
+    downloadBtn.type = "button";
+    downloadBtn.className = "qw-media-fallback-btn";
+    downloadBtn.title = "Download file";
+    downloadBtn.setAttribute("aria-label", "Download media file");
+    downloadBtn.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 5-5m-5 5-5-5M5 20h14"/></svg>';
+    downloadBtn.addEventListener("click", event => {
+        event.preventDefault();
+        event.stopPropagation();
+        downloadImage(url, filename);
+    });
+
+    box.append(text, openBtn, downloadBtn);
+    return box;
+}
+
+function createMessageVideo(urls, options = {}) {
+    const sources = uniqueMediaUrls(urls || []);
+    const originalUrl = options.originalUrl || sources.find(isDirectVideoUrl) || sources[0];
+    let sourceIndex = 0;
+    const video = document.createElement("video");
+    video.className = "qw-msg-video";
+    video.controls = true;
+    video.preload = "metadata";
+    video.playsInline = true;
+    video.setAttribute("playsinline", "");
+    if (options.poster) video.poster = options.poster;
+    video.addEventListener("click", event => event.stopPropagation());
+    video.addEventListener("auxclick", event => {
+        if (event.button !== 1) return;
+        event.preventDefault();
+        event.stopPropagation();
+        openUrl(originalUrl);
+    });
+    video.addEventListener("error", () => {
+        if (sourceIndex + 1 < sources.length) {
+            sourceIndex += 1;
+            video.src = sources[sourceIndex];
+            video.load();
+            return;
+        }
+        video.replaceWith(createMediaFallback(originalUrl, options.filename || getUrlFilename(originalUrl)));
+    });
+    video.src = sources[0];
+    return video;
+}
+
+function createMessageAudio(urls, options = {}) {
+    const sources = uniqueMediaUrls(urls || []);
+    const originalUrl = options.originalUrl || sources[0];
+    let sourceIndex = 0;
+    const audioBox = document.createElement("div");
+    audioBox.className = "qw-voice-msg-player";
+    const audio = document.createElement("audio");
+    audio.controls = true;
+    audio.preload = "metadata";
+    audio.addEventListener("click", event => event.stopPropagation());
+    audio.addEventListener("error", () => {
+        if (sourceIndex + 1 < sources.length) {
+            sourceIndex += 1;
+            audio.src = sources[sourceIndex];
+            audio.load();
+            return;
+        }
+        audioBox.replaceWith(createMediaFallback(originalUrl, options.filename || getUrlFilename(originalUrl)));
+    });
+    audio.src = sources[0];
+    audioBox.appendChild(audio);
+    return audioBox;
+}
+
+function createFileCard(attachment) {
+    const url = attachment?.url || "";
+    const descriptor = getFileDescriptor(attachment?.filename, url, attachment?.content_type || attachment?.contentType);
+    const card = document.createElement("a");
+    card.href = url;
+    card.target = "_blank";
+    card.rel = "noreferrer";
+    card.className = "qw-file-card";
+    card.title = `${descriptor.label}: ${descriptor.name}`;
+
+    const icon = document.createElement("span");
+    icon.className = "qw-file-icon";
+    icon.innerHTML = mediaIconSvg(descriptor.kind);
+
+    const info = document.createElement("span");
+    info.className = "qw-file-info";
+    const name = document.createElement("span");
+    name.className = "qw-file-name";
+    name.textContent = descriptor.name;
+    const meta = document.createElement("span");
+    meta.className = "qw-file-meta";
+    meta.textContent = [descriptor.label, formatFileSize(attachment?.size)].filter(Boolean).join(" • ");
+    info.append(name, meta);
+
+    const type = document.createElement("span");
+    type.className = "qw-file-type";
+    type.textContent = descriptor.label;
+    card.append(icon, info, type);
+    return card;
+}
+
+function createLinkPreviewCard(url, embed, msg) {
+    const presentation = getLinkPresentation(url, msg);
+    const site = getSiteInfo(url, embed);
+    const card = document.createElement("a");
+    card.href = url;
+    card.target = "_blank";
+    card.rel = "noreferrer";
+    card.className = "qw-link-preview";
+    card.title = url;
+
+    const thumbnails = uniqueMediaUrls([
+        ...getEmbedProxyUrls(embed?.thumbnail),
+        ...getEmbedProxyUrls(embed?.image)
+    ]);
+    if (thumbnails.length) {
+        let index = 0;
+        const thumb = document.createElement("img");
+        thumb.className = "qw-link-preview-thumb";
+        thumb.alt = "";
+        thumb.loading = "lazy";
+        thumb.addEventListener("error", () => {
+            if (index + 1 < thumbnails.length) {
+                index += 1;
+                thumb.src = thumbnails[index];
+            } else {
+                thumb.remove();
+                const icon = document.createElement("span");
+                icon.className = "qw-link-preview-icon";
+                icon.innerHTML = mediaIconSvg(presentation.kind);
+                card.prepend(icon);
+            }
+        });
+        thumb.src = thumbnails[0];
+        card.appendChild(thumb);
+    } else {
+        const icon = document.createElement("span");
+        icon.className = "qw-link-preview-icon";
+        icon.innerHTML = mediaIconSvg(presentation.kind);
+        card.appendChild(icon);
+    }
+
+    const info = document.createElement("span");
+    info.className = "qw-link-preview-info";
+    const title = document.createElement("span");
+    title.className = "qw-link-preview-title";
+    title.textContent = embed?.title || presentation.label;
+    const provider = document.createElement("span");
+    provider.className = "qw-link-preview-provider";
+    provider.textContent = site.name;
+    info.append(title, provider);
+    card.appendChild(info);
+    return card;
+}
+
+function removeLinksWithRenderedPreviews(row, renderedKeys) {
+    const messageText = row.querySelector(".qw-msg-text");
+    if (!messageText || !renderedKeys?.size) return;
+
+    for (const link of messageText.querySelectorAll("a.qw-link[href]")) {
+        if (renderedKeys.has(getMediaUrlKey(link.href))) link.remove();
+    }
+
+    // A message containing only a preview URL should not leave an empty text
+    // line above the preview card. Text surrounding a removed URL is retained.
+    if (!messageText.textContent.trim()) messageText.remove();
+}
+
 function createMessageElement(msg, currentUserId, prevMsg) {
     const isMe = String(msg.author?.id) === String(currentUserId);
     const isSameAuthor = prevMsg && String(prevMsg.author?.id) === String(msg.author?.id);
@@ -2749,7 +3281,7 @@ function createMessageElement(msg, currentUserId, prevMsg) {
     }
 
     const timeStr = formatTime(msg.timestamp);
-    const contentHtml = formatContent(msg.content);
+    const contentHtml = formatContent(stripGifUrls(msg.content), msg);
 
     row.innerHTML = `
         ${headerHtml}
@@ -2764,58 +3296,100 @@ function createMessageElement(msg, currentUserId, prevMsg) {
     `;
 
     const attContainer = row.querySelector(".qw-attachments");
+    const renderedMedia = new Set();
+    const renderedPreviews = new Set();
     if (Array.isArray(msg.attachments) && msg.attachments.length > 0) {
         for (const att of msg.attachments) {
-            const isImg = (att.content_type && att.content_type.startsWith("image/")) ||
-                /\.(png|jpe?g|gif|webp)$/i.test(att.url || "");
-            const isAudio = (att.content_type && att.content_type.startsWith("audio/")) ||
-                /\.(ogg|mp3|wav|m4a|webm)$/i.test(att.url || "") || msg.flags === 8192;
+            const contentType = String(att.content_type || att.contentType || "").toLowerCase();
+            const isVoice = msg.flags === 8192 || contentType.startsWith("audio/");
+            const isImg = contentType.startsWith("image/") || isGifUrl(att.url) ||
+                /\.(png|jpe?g|webp)(?:$|[?#])/i.test(att.url || "");
+            const isVideo = !isVoice && (contentType.startsWith("video/") || isDirectVideoUrl(att.url));
+            const isAudio = isVoice || FILE_TYPE_GROUPS.audio.has(getFileExtension(att.url));
+            const attachmentSources = uniqueMediaUrls([att.proxy_url, att.proxyURL, att.proxyUrl, att.url]);
 
             if (isImg) {
-                const img = document.createElement("img");
-                img.src = att.url;
-                img.className = "qw-msg-img";
-                img.loading = "lazy";
-                img.title = "Left-click: View | Middle-click: Open in Browser";
-                img.addEventListener("click", e => {
-                    e.stopPropagation();
-                    openLightbox(att.url, getChatProfileOwner(img));
-                });
-                img.addEventListener("auxclick", e => {
-                    if (e.button === 1) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        openUrl(att.url);
-                    }
-                });
-                attContainer.appendChild(img);
+                const gifFallback = isGifUrl(att.url) || contentType === "image/gif" ? "Open GIF" : "";
+                attContainer.appendChild(createMessageImage(attachmentSources[0], gifFallback, attachmentSources.slice(1)));
+                attachmentSources.forEach(source => renderedMedia.add(getMediaUrlKey(source)));
+            } else if (isVideo) {
+                attContainer.appendChild(createMessageVideo(attachmentSources, { originalUrl: att.url, filename: att.filename }));
+                attachmentSources.forEach(source => renderedMedia.add(getMediaUrlKey(source)));
             } else if (isAudio) {
-                const audioBox = document.createElement("div");
-                audioBox.className = "qw-voice-msg-player";
-                const audio = document.createElement("audio");
-                audio.controls = true;
-                audio.src = att.url;
-                audio.preload = "metadata";
-                audioBox.appendChild(audio);
-                attContainer.appendChild(audioBox);
+                attContainer.appendChild(createMessageAudio(attachmentSources, { originalUrl: att.url, filename: att.filename }));
+                attachmentSources.forEach(source => renderedMedia.add(getMediaUrlKey(source)));
             } else {
-                const link = document.createElement("a");
-                link.href = att.url;
-                link.target = "_blank";
-                link.rel = "noreferrer";
-                link.className = "qw-msg-file";
-                link.textContent = `📁 ${att.filename || "File"}`;
-                link.addEventListener("click", e => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    openUrl(att.url);
-                });
-                attContainer.appendChild(link);
+                attContainer.appendChild(createFileCard(att));
             }
         }
-    } else {
-        attContainer.remove();
     }
+
+    for (const gifSources of collectMessageGifSources(msg)) {
+        const mediaKeys = gifSources.map(getMediaUrlKey).filter(Boolean);
+        if (!gifSources.length || mediaKeys.some(key => renderedMedia.has(key))) continue;
+        attContainer.appendChild(createMessageImage(gifSources[0], "Open GIF", gifSources.slice(1)));
+        mediaKeys.forEach(key => renderedMedia.add(key));
+    }
+
+    const messageUrls = getMessageUrls(msg.content);
+    for (const url of messageUrls) {
+        if (isGifUrl(url)) continue;
+        const mediaKey = getMediaUrlKey(url);
+        if (!mediaKey || renderedMedia.has(mediaKey)) continue;
+        if (isDirectVideoUrl(url)) {
+            attContainer.appendChild(createMessageVideo([url], { originalUrl: url, filename: getUrlFilename(url) }));
+            renderedMedia.add(mediaKey);
+        } else if (isDirectImageUrl(url)) {
+            attContainer.appendChild(createMessageImage(url));
+            renderedMedia.add(mediaKey);
+        }
+    }
+
+    for (const embed of Array.isArray(msg.embeds) ? msg.embeds : []) {
+        const matchedMessageUrl = messageUrls.find(url => findEmbedForUrl(url, msg) === embed);
+        const relatedUrl = matchedMessageUrl || embed?.url || (messageUrls.length === 1 ? messageUrls[0] : "");
+        const videoSources = getEmbedProxyUrls(embed?.video);
+        const imageSources = getEmbedProxyUrls(embed?.image);
+        const thumbnailSources = getEmbedProxyUrls(embed?.thumbnail);
+        const playableVideo = videoSources.some(isDirectVideoUrl);
+        const relatedIsDirectMedia = isDirectVideoUrl(relatedUrl) || isDirectImageUrl(relatedUrl);
+        const isExternalPreview = relatedUrl && !relatedIsDirectMedia && (embed?.title || embed?.provider?.name || ["article", "link", "rich", "video"].includes(embed?.type));
+        const embedMediaKeys = [...videoSources, ...imageSources, relatedUrl].map(getMediaUrlKey).filter(Boolean);
+
+        if (playableVideo && !isExternalPreview) {
+            const mediaKeys = [...videoSources, relatedUrl].map(getMediaUrlKey).filter(Boolean);
+            if (!mediaKeys.some(key => renderedMedia.has(key))) {
+                attContainer.appendChild(createMessageVideo(videoSources, {
+                    originalUrl: relatedUrl || videoSources.find(isDirectVideoUrl) || videoSources[0],
+                    filename: getUrlFilename(videoSources.find(isDirectVideoUrl) || videoSources[0]),
+                    poster: thumbnailSources[0] || imageSources[0]
+                }));
+                mediaKeys.forEach(key => renderedMedia.add(key));
+            }
+        }
+
+        if (isExternalPreview) {
+            const previewKey = getMediaUrlKey(relatedUrl);
+            if (!embedMediaKeys.some(key => renderedMedia.has(key)) && !renderedPreviews.has(previewKey)) {
+                attContainer.appendChild(createLinkPreviewCard(relatedUrl, embed, msg));
+                renderedPreviews.add(previewKey);
+            }
+            continue;
+        }
+
+        if (!playableVideo && imageSources.length) {
+            const mediaKeys = [...imageSources, relatedUrl].map(getMediaUrlKey).filter(Boolean);
+            if (!mediaKeys.some(key => renderedMedia.has(key))) {
+                const gifFallback = imageSources.some(isGifUrl) ? "Open GIF" : "";
+                attContainer.appendChild(createMessageImage(imageSources[0], gifFallback, imageSources.slice(1)));
+                mediaKeys.forEach(key => renderedMedia.add(key));
+            }
+        }
+    }
+
+    removeLinksWithRenderedPreviews(row, new Set([...renderedMedia, ...renderedPreviews]));
+
+    if (!attContainer.childElementCount) attContainer.remove();
 
     return row;
 }
@@ -3250,7 +3824,7 @@ class WhisperSession {
         this.messageResizeObserver?.observe(this.scroller);
 
         this.container.addEventListener("click", e => {
-            const link = e.target.closest("a.qw-link, a.qw-msg-file");
+            const link = e.target.closest("a.qw-link, a.qw-msg-file, a.qw-file-card, a.qw-link-preview");
             if (link && link.href) {
                 e.preventDefault();
                 e.stopPropagation();
@@ -3264,7 +3838,7 @@ class WhisperSession {
             const bubble = e.target.closest(".qw-msg-bubble");
             if (bubble) {
                 const links = bubble.querySelectorAll("a.qw-link");
-                if (links.length === 1 && !e.target.closest("img, button, .qw-reply-banner, .qw-msg-time")) {
+                if (links.length === 1 && !e.target.closest("img, video, audio, button, a, .qw-media-fallback, .qw-reply-banner, .qw-msg-time")) {
                     openUrl(links[0].href);
                 }
             }
@@ -3272,14 +3846,14 @@ class WhisperSession {
 
         this.container.addEventListener("auxclick", e => {
             if (e.button === 1) {
-                const img = e.target.closest("img.qw-msg-img, img");
+                const img = e.target.closest("img.qw-msg-img");
                 if (img && img.src) {
                     e.preventDefault();
                     e.stopPropagation();
                     openUrl(img.src);
                     return;
                 }
-                const link = e.target.closest("a.qw-link, a.qw-msg-file");
+                const link = e.target.closest("a.qw-link, a.qw-msg-file, a.qw-file-card, a.qw-link-preview");
                 if (link && link.href) {
                     e.preventDefault();
                     e.stopPropagation();
@@ -3291,7 +3865,7 @@ class WhisperSession {
 
         this.container.addEventListener("mousedown", e => {
             if (e.button === 1) {
-                const img = e.target.closest("img.qw-msg-img, img");
+                const img = e.target.closest("img.qw-msg-img");
                 if (img) e.preventDefault();
             }
         });
