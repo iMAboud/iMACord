@@ -8,6 +8,10 @@ let pluginRunning = false;
 const pendingNativeMounts = new Map();
 const nativeStyleSnapshots = new Map();
 const nativeAttributeSnapshots = new Map();
+const nativeProfileEffectLayouts = new Map();
+const nativeProfileLayoutModes = new Map();
+const nativeSplitStyleOwners = new Map();
+const nativeChatProbeAttempts = new WeakMap();
 const draggableHandles = new Map();
 const ownedNativeProfiles = new Map();
 const pendingProfileRequests = new Map();
@@ -220,9 +224,11 @@ function destroyOwnedNativeProfile(userId) {
     ownedNativeProfiles.delete(String(userId));
     clearTimeout(record.preloadTimer);
     if (record.outer) {
+        clearNativeProfileLayout(record.outer);
         for (const binding of [...draggableHandles.values()]) {
             if (binding.outer === record.outer) binding.cleanup();
         }
+        record.outer.querySelectorAll('.qw-floating-gear-btn, .qw-top-close-btn').forEach(element => element.remove());
         restoreNativeStyles(record.outer);
     }
     record.root.unmount();
@@ -232,11 +238,11 @@ function destroyOwnedNativeProfile(userId) {
 function setNativeStyle(owner, element, property, value) {
     let snapshot = nativeStyleSnapshots.get(element);
     if (!snapshot) {
-        snapshot = { owner, properties: new Map() };
+        snapshot = { properties: new Map() };
         nativeStyleSnapshots.set(element, snapshot);
     }
     if (!snapshot.properties.has(property)) {
-        snapshot.properties.set(property, [element.style.getPropertyValue(property), element.style.getPropertyPriority(property)]);
+        snapshot.properties.set(property, [element.style.getPropertyValue(property), element.style.getPropertyPriority(property), owner]);
     }
     if (element.style.getPropertyValue(property) !== value || element.style.getPropertyPriority(property) !== "important") {
         element.style.setProperty(property, value, "important");
@@ -245,30 +251,32 @@ function setNativeStyle(owner, element, property, value) {
 
 function restoreNativeStyles(owner) {
     for (const [element, snapshot] of nativeStyleSnapshots) {
-        if (snapshot.owner !== owner) continue;
-        for (const [property, [value, priority]] of snapshot.properties) {
+        for (const [property, [value, priority, propertyOwner]] of [...snapshot.properties]) {
+            if (propertyOwner !== owner) continue;
             if (value) element.style.setProperty(property, value, priority);
             else element.style.removeProperty(property);
+            snapshot.properties.delete(property);
         }
-        nativeStyleSnapshots.delete(element);
+        if (!snapshot.properties.size) nativeStyleSnapshots.delete(element);
     }
     for (const [element, snapshot] of nativeAttributeSnapshots) {
-        if (snapshot.owner !== owner) continue;
-        for (const [name, value] of snapshot.attributes) {
+        for (const [name, [value, attributeOwner]] of [...snapshot.attributes]) {
+            if (attributeOwner !== owner) continue;
             if (value === null) element.removeAttribute(name);
             else element.setAttribute(name, value);
+            snapshot.attributes.delete(name);
         }
-        nativeAttributeSnapshots.delete(element);
+        if (!snapshot.attributes.size) nativeAttributeSnapshots.delete(element);
     }
 }
 
 function setNativeAttribute(owner, element, name, value) {
     let snapshot = nativeAttributeSnapshots.get(element);
     if (!snapshot) {
-        snapshot = { owner, attributes: new Map() };
+        snapshot = { attributes: new Map() };
         nativeAttributeSnapshots.set(element, snapshot);
     }
-    if (!snapshot.attributes.has(name)) snapshot.attributes.set(name, element.getAttribute(name));
+    if (!snapshot.attributes.has(name)) snapshot.attributes.set(name, [element.getAttribute(name), owner]);
     if (element.getAttribute(name) !== value) element.setAttribute(name, value);
 }
 
@@ -374,8 +382,58 @@ function getNativeSplitDimensions() {
     return { width, detailsWidth: width * ratio, chatWidth: width * (1 - ratio), height: Math.min(cfg.profileHeight, Math.max(0, window.innerHeight - 20)) };
 }
 
-function getAttachedProfileWidth() { return getNativeSplitDimensions().width; }
-function getAttachedProfileHeight() { return getNativeSplitDimensions().height; }
+function getNativeProfileLayoutMode(outer) {
+    return nativeProfileLayoutModes.get(outer) === 'split' ? 'split' : 'native';
+}
+
+function getNativeSplitStyleOwner(outer) {
+    let owner = nativeSplitStyleOwners.get(outer);
+    if (!owner) {
+        owner = { outer, type: 'native-split-layout' };
+        nativeSplitStyleOwners.set(outer, owner);
+    }
+    return owner;
+}
+
+function setNativeProfileLayoutMode(outer, mode) {
+    if (!outer) return;
+    if (mode === 'split') {
+        nativeProfileLayoutModes.set(outer, 'split');
+        getNativeSplitStyleOwner(outer);
+        return;
+    }
+    destroyNativeProfileEffectLayout(outer);
+    const owner = nativeSplitStyleOwners.get(outer);
+    if (owner) {
+        restoreNativeStyles(owner);
+        nativeSplitStyleOwners.delete(outer);
+    }
+    nativeProfileLayoutModes.set(outer, 'native');
+}
+
+function clearNativeProfileLayout(outer) {
+    if (!outer) return;
+    setNativeProfileLayoutMode(outer, 'native');
+    nativeProfileLayoutModes.delete(outer);
+}
+
+function getNativeProfileNaturalSize(outer) {
+    const { surface } = getNativeProfileParts(outer);
+    const surfaceRect = surface?.getBoundingClientRect?.();
+    const outerRect = outer?.getBoundingClientRect?.();
+    return {
+        width: surface?.offsetWidth || surfaceRect?.width || outer?.offsetWidth || outerRect?.width || 340,
+        height: surface?.offsetHeight || surfaceRect?.height || outer?.offsetHeight || outerRect?.height || 420
+    };
+}
+
+function getAttachedProfileWidth(outer) {
+    return getNativeProfileLayoutMode(outer) === 'split' ? getNativeSplitDimensions().width : getNativeProfileNaturalSize(outer).width;
+}
+
+function getAttachedProfileHeight(outer) {
+    return getNativeProfileLayoutMode(outer) === 'split' ? getNativeSplitDimensions().height : getNativeProfileNaturalSize(outer).height;
+}
 
 function getNativeProfileParts(outer) {
     const frame = getNativeProfileFrame(outer);
@@ -430,14 +488,357 @@ function resizeNativeBanner(outer, banner, width) {
     }
 }
 
+const PROFILE_EFFECT_SELECTOR = '[class*="profileEffects_"], [class*="profileEffect_"]';
+const PROFILE_EFFECT_MEDIA_SELECTOR = 'img, video, canvas, svg';
+
+function getNativeProfileEffectRoots(frame) {
+    if (!frame) return [];
+    return [...frame.querySelectorAll(PROFILE_EFFECT_SELECTOR)].filter(effect => {
+        if (effect.closest('[data-qw-profile-effect-backdrop="true"]')) return false;
+        const parentEffect = effect.parentElement?.closest(PROFILE_EFFECT_SELECTOR);
+        return !parentEffect || parentEffect.closest('[data-qw-profile-effect-backdrop="true"]');
+    });
+}
+
+function getProfileEffectMedia(root, selector = PROFILE_EFFECT_MEDIA_SELECTOR) {
+    return [root, ...root.querySelectorAll(selector)].filter(visual => {
+        if (!visual.matches?.(selector)) return false;
+        const parentMedia = visual.parentElement?.closest(selector);
+        return !parentMedia || !root.contains(parentMedia);
+    });
+}
+
+function setProfileEffectCloneStyle(element, property, value) {
+    if (element.style.getPropertyValue(property) !== value || element.style.getPropertyPriority(property) !== 'important') {
+        element.style.setProperty(property, value, 'important');
+    }
+}
+
+function getProfileEffectRadii(surface, splitBoundary = false) {
+    const style = getComputedStyle(surface);
+    return {
+        'border-top-left-radius': style.borderTopLeftRadius || '0px',
+        'border-top-right-radius': splitBoundary ? '0px' : (style.borderTopRightRadius || '0px'),
+        'border-bottom-right-radius': splitBoundary ? '0px' : (style.borderBottomRightRadius || '0px'),
+        'border-bottom-left-radius': style.borderBottomLeftRadius || '0px'
+    };
+}
+
+function fitProfileEffectForeground(styleOwner, effect, radii, width) {
+    for (const [property, value] of Object.entries({
+        width,
+        height: '100%',
+        'min-width': '0px',
+        'min-height': '0px',
+        'max-width': width,
+        'max-height': '100%',
+        left: '0px',
+        right: 'auto',
+        overflow: 'hidden',
+        'box-sizing': 'border-box',
+        'pointer-events': 'none',
+        ...radii
+    })) setNativeStyle(styleOwner, effect, property, value);
+
+    for (const visual of getProfileEffectMedia(effect)) {
+        for (const [property, value] of Object.entries({
+            width: '100%',
+            height: '100%',
+            'min-width': '0px',
+            'min-height': '0px',
+            'max-width': '100%',
+            'max-height': '100%',
+            'object-fit': 'contain',
+            'object-position': 'center center'
+        })) setNativeStyle(styleOwner, visual, property, value);
+        if (visual.matches('svg')) setNativeAttribute(styleOwner, visual, 'preserveAspectRatio', 'xMidYMid meet');
+    }
+
+    for (const visual of [effect, ...effect.querySelectorAll('*')]) {
+        const backgroundImage = getComputedStyle(visual).backgroundImage;
+        if (backgroundImage && backgroundImage !== 'none') {
+            setNativeStyle(styleOwner, visual, 'background-size', 'contain');
+            setNativeStyle(styleOwner, visual, 'background-position', 'center center');
+            setNativeStyle(styleOwner, visual, 'background-repeat', 'no-repeat');
+        }
+    }
+}
+
+function removeNativeProfileEffectEntry(state, effect) {
+    const entry = state.entries.get(effect);
+    if (!entry) return;
+    entry.observer.disconnect();
+    try { state.resizeObserver?.unobserve(effect); } catch (error) {}
+    entry.stage.remove();
+    state.entries.delete(effect);
+}
+
+function updateNativeProfileEffectMediaLoops(state) {
+    const entries = [...state.entries.values()];
+    const hasVideos = entries.some(entry => entry.videoPairs.length);
+    const hasCanvases = entries.some(entry => entry.canvasPairs.length);
+
+    if (hasVideos && !state.videoTimer) {
+        state.videoTimer = setInterval(() => {
+            if (!state.outer.isConnected) return;
+            for (const entry of state.entries.values()) {
+                for (const [source, copy] of entry.videoPairs) {
+                    if (!source.isConnected || !copy.isConnected) continue;
+                    copy.muted = true;
+                    copy.playbackRate = source.playbackRate || 1;
+                    if (Number.isFinite(source.currentTime) && Math.abs(copy.currentTime - source.currentTime) > 0.12) {
+                        try { copy.currentTime = source.currentTime; } catch (error) {}
+                    }
+                    if (source.paused || source.ended) copy.pause();
+                    else copy.play().catch(() => {});
+                }
+            }
+        }, 250);
+    } else if (!hasVideos && state.videoTimer) {
+        clearInterval(state.videoTimer);
+        state.videoTimer = 0;
+    }
+
+    if (hasCanvases && !state.canvasFrame) {
+        const copyCanvases = () => {
+            state.canvasFrame = 0;
+            if (!pluginRunning || nativeProfileEffectLayouts.get(state.outer) !== state || !state.outer.isConnected) return;
+            let copied = false;
+            for (const entry of state.entries.values()) {
+                for (const [source, copy] of entry.canvasPairs) {
+                    if (!source.isConnected || !copy.isConnected || !source.width || !source.height) continue;
+                    if (copy.width !== source.width) copy.width = source.width;
+                    if (copy.height !== source.height) copy.height = source.height;
+                    try {
+                        copy.getContext('2d')?.drawImage(source, 0, 0);
+                        copied = true;
+                    } catch (error) {}
+                }
+            }
+            if (copied || [...state.entries.values()].some(entry => entry.canvasPairs.length)) {
+                state.canvasFrame = requestAnimationFrame(copyCanvases);
+            }
+        };
+        state.canvasFrame = requestAnimationFrame(copyCanvases);
+    } else if (!hasCanvases && state.canvasFrame) {
+        cancelAnimationFrame(state.canvasFrame);
+        state.canvasFrame = 0;
+    }
+}
+
+function createNativeProfileEffectBackdrop(state, effect, radii, width) {
+    const stage = document.createElement('div');
+    stage.dataset.qwProfileEffectBackdrop = 'true';
+    stage.setAttribute('aria-hidden', 'true');
+    stage.setAttribute('inert', '');
+    const effectZIndex = getComputedStyle(effect).zIndex;
+    for (const [property, value] of Object.entries({
+        position: 'absolute',
+        top: '0px',
+        bottom: '0px',
+        left: '0px',
+        right: 'auto',
+        width,
+        height: '100%',
+        overflow: 'hidden',
+        'box-sizing': 'border-box',
+        'pointer-events': 'none',
+        ...(effectZIndex !== 'auto' ? { 'z-index': effectZIndex } : {}),
+        ...radii
+    })) setProfileEffectCloneStyle(stage, property, value);
+
+    const copy = effect.cloneNode(true);
+    copy.dataset.qwProfileEffectBackdrop = 'true';
+    copy.setAttribute('aria-hidden', 'true');
+    copy.setAttribute('inert', '');
+    const fill = document.createElement('div');
+    fill.dataset.qwProfileEffectBackdrop = 'true';
+    fill.setAttribute('aria-hidden', 'true');
+    fill.setAttribute('inert', '');
+    for (const [property, value] of Object.entries({
+        position: 'absolute',
+        inset: '0px',
+        width: '100%',
+        height: '100%',
+        overflow: 'visible',
+        'pointer-events': 'none',
+        opacity: '0.72',
+        filter: 'blur(20px) brightness(0.72) saturate(1.08)',
+        scale: '1.1',
+        'transform-origin': 'center center'
+    })) setProfileEffectCloneStyle(fill, property, value);
+    for (const element of [copy, ...copy.querySelectorAll('*')]) {
+        element.removeAttribute?.('id');
+        element.setAttribute?.('tabindex', '-1');
+        if ('draggable' in element) element.draggable = false;
+    }
+    for (const [property, value] of Object.entries({
+        position: 'absolute',
+        inset: '0px',
+        margin: '0px',
+        width: '100%',
+        height: '100%',
+        'min-width': '0px',
+        'min-height': '0px',
+        'max-width': 'none',
+        'max-height': 'none',
+        overflow: 'visible',
+        'box-sizing': 'border-box',
+        'pointer-events': 'none'
+    })) setProfileEffectCloneStyle(copy, property, value);
+
+    // Connect the copy before reading computed backgrounds so class-based
+    // Discord artwork is available to the cover pass as well as inline media.
+    fill.appendChild(copy);
+    stage.appendChild(fill);
+    effect.parentElement.insertBefore(stage, effect);
+
+    for (const visual of getProfileEffectMedia(copy)) {
+        for (const [property, value] of Object.entries({
+            width: '100%',
+            height: '100%',
+            'min-width': '0px',
+            'min-height': '0px',
+            'max-width': 'none',
+            'max-height': 'none',
+            'object-fit': 'cover',
+            'object-position': 'center center'
+        })) setProfileEffectCloneStyle(visual, property, value);
+        if (visual.matches('svg')) visual.setAttribute('preserveAspectRatio', 'xMidYMid slice');
+    }
+    for (const visual of [copy, ...copy.querySelectorAll('*')]) {
+        const backgroundImage = getComputedStyle(visual).backgroundImage;
+        if (backgroundImage && backgroundImage !== 'none') {
+            setProfileEffectCloneStyle(visual, 'background-size', 'cover');
+            setProfileEffectCloneStyle(visual, 'background-position', 'center center');
+            setProfileEffectCloneStyle(visual, 'background-repeat', 'no-repeat');
+        }
+    }
+    for (const video of getProfileEffectMedia(copy, 'video')) {
+        video.muted = true;
+        video.setAttribute('muted', '');
+        video.setAttribute('playsinline', '');
+    }
+
+    const sourceVideos = getProfileEffectMedia(effect, 'video');
+    const copiedVideos = getProfileEffectMedia(copy, 'video');
+    const sourceCanvases = getProfileEffectMedia(effect, 'canvas');
+    const copiedCanvases = getProfileEffectMedia(copy, 'canvas');
+    const entry = {
+        stage,
+        copy,
+        videoPairs: sourceVideos.map((video, index) => [video, copiedVideos[index]]).filter(pair => pair[1]),
+        canvasPairs: sourceCanvases.map((canvas, index) => [canvas, copiedCanvases[index]]).filter(pair => pair[1]),
+        observer: null
+    };
+    entry.observer = new MutationObserver(() => {
+        entry.dirty = true;
+        scheduleNativeProfileEffects(state.outer);
+    });
+    entry.observer.observe(effect, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['class', 'src', 'poster', 'href', 'xlink:href']
+    });
+    return entry;
+}
+
+function destroyNativeProfileEffectLayout(outer) {
+    const state = nativeProfileEffectLayouts.get(outer);
+    if (!state) return;
+    nativeProfileEffectLayouts.delete(outer);
+    if (state.syncFrame) cancelAnimationFrame(state.syncFrame);
+    if (state.canvasFrame) cancelAnimationFrame(state.canvasFrame);
+    if (state.videoTimer) clearInterval(state.videoTimer);
+    state.resizeObserver?.disconnect();
+    for (const effect of [...state.entries.keys()]) removeNativeProfileEffectEntry(state, effect);
+}
+
+function syncNativeProfileEffects(outer) {
+    const state = nativeProfileEffectLayouts.get(outer);
+    if (!state) return;
+    state.syncFrame = 0;
+    if (!pluginRunning || !outer.isConnected) {
+        destroyNativeProfileEffectLayout(outer);
+        return;
+    }
+    if (getNativeProfileLayoutMode(outer) !== 'split') {
+        destroyNativeProfileEffectLayout(outer);
+        return;
+    }
+    const { frame, surface } = getNativeProfileParts(outer);
+    if (!frame?.isConnected || !surface?.isConnected) return;
+    if (state.surface !== surface) {
+        state.resizeObserver?.disconnect();
+        state.surface = surface;
+        state.resizeObserver?.observe(surface);
+        for (const effect of state.entries.keys()) state.resizeObserver?.observe(effect);
+    }
+    const effects = getNativeProfileEffectRoots(frame);
+    const activeEffects = new Set(effects);
+    for (const effect of [...state.entries.keys()]) {
+        if (!activeEffects.has(effect) || !effect.isConnected) removeNativeProfileEffectEntry(state, effect);
+    }
+    const dimensions = getNativeSplitDimensions();
+    const effectWidth = Math.max(0, dimensions.detailsWidth) + 'px';
+    const radii = getProfileEffectRadii(surface, true);
+    const styleOwner = getNativeSplitStyleOwner(outer);
+    for (const effect of effects) {
+        fitProfileEffectForeground(styleOwner, effect, radii, effectWidth);
+        let entry = state.entries.get(effect);
+        if (entry?.dirty || !entry?.stage.isConnected || entry?.stage.parentElement !== effect.parentElement) {
+            if (entry) removeNativeProfileEffectEntry(state, effect);
+            entry = null;
+        }
+        if (!entry) {
+            entry = createNativeProfileEffectBackdrop(state, effect, radii, effectWidth);
+            state.entries.set(effect, entry);
+            state.resizeObserver?.observe(effect);
+        } else {
+            setProfileEffectCloneStyle(entry.stage, 'width', effectWidth);
+            for (const [property, value] of Object.entries(radii)) setProfileEffectCloneStyle(entry.stage, property, value);
+        }
+    }
+    updateNativeProfileEffectMediaLoops(state);
+}
+
+function scheduleNativeProfileEffects(outer) {
+    if (!outer?.isConnected) return;
+    if (getNativeProfileLayoutMode(outer) !== 'split') {
+        destroyNativeProfileEffectLayout(outer);
+        return;
+    }
+    let state = nativeProfileEffectLayouts.get(outer);
+    if (!state) {
+        state = {
+            outer,
+            surface: null,
+            entries: new Map(),
+            syncFrame: 0,
+            canvasFrame: 0,
+            videoTimer: 0,
+            resizeObserver: typeof ResizeObserver === 'function' ? new ResizeObserver(() => scheduleNativeProfileEffects(outer)) : null
+        };
+        nativeProfileEffectLayouts.set(outer, state);
+    }
+    if (!state.syncFrame) state.syncFrame = requestAnimationFrame(() => syncNativeProfileEffects(outer));
+}
+
 function applyPopoutDimensions(outer) {
     if (!outer) return;
-    const dimensions = getNativeSplitDimensions();
     const parts = getNativeProfileParts(outer);
     const { frame, surface, inner, banner, body } = parts;
+    applyProfilePointerRouting(outer, parts);
+    if (getNativeProfileLayoutMode(outer) !== 'split') {
+        scheduleNativeProfileEffects(outer);
+        return parts;
+    }
+    const dimensions = getNativeSplitDimensions();
+    const styleOwner = getNativeSplitStyleOwner(outer);
     const width = dimensions.width + 'px', height = dimensions.height + 'px';
-    setNativeAttribute(outer, frame, 'data-qw-native-split', 'true');
-    setNativeAttribute(outer, surface, 'data-qw-native-surface', 'true');
+    setNativeAttribute(styleOwner, frame, 'data-qw-native-split', 'true');
+    setNativeAttribute(styleOwner, surface, 'data-qw-native-surface', 'true');
     const shells = new Set([outer, frame, surface, inner]);
     for (let parent = surface.parentElement; parent && frame.contains(parent); parent = parent.parentElement) {
         shells.add(parent);
@@ -445,23 +846,16 @@ function applyPopoutDimensions(outer) {
     }
     for (const element of shells) {
         const nested = element !== outer && element !== frame;
-        for (const property of ['width', 'min-width', 'max-width']) setNativeStyle(outer, element, property, nested ? '100%' : width);
-        for (const property of ['height', 'min-height', 'max-height']) setNativeStyle(outer, element, property, nested ? '100%' : height);
-        setNativeStyle(outer, element, '--custom-user-profile-popout-width', width);
-        setNativeStyle(outer, element, 'box-sizing', 'border-box');
-        setNativeStyle(outer, element, 'overflow', 'visible');
-        if (element !== outer && getComputedStyle(element).position === 'static') setNativeStyle(outer, element, 'position', 'relative');
+        for (const property of ['width', 'min-width', 'max-width']) setNativeStyle(styleOwner, element, property, nested ? '100%' : width);
+        for (const property of ['height', 'min-height', 'max-height']) setNativeStyle(styleOwner, element, property, nested ? '100%' : height);
+        setNativeStyle(styleOwner, element, '--custom-user-profile-popout-width', width);
+        setNativeStyle(styleOwner, element, 'box-sizing', 'border-box');
+        setNativeStyle(styleOwner, element, 'overflow', 'visible');
+        if (element !== outer && getComputedStyle(element).position === 'static') setNativeStyle(styleOwner, element, 'position', 'relative');
     }
-    applyProfilePointerRouting(outer, parts);
-    // Let the native frame decoration overhang, while preserving Discord's
-    // own clipping inside the effect so its intro starts within the card.
-    for (const effect of frame.querySelectorAll('[class*="profileEffects_"], [class*="profileEffect_"]')) {
-        if (effect.parentElement?.closest('[class*="profileEffects_"], [class*="profileEffect_"]')) continue;
-        for (let parent = effect.parentElement; parent && frame.contains(parent); parent = parent.parentElement) {
-            setNativeStyle(outer, parent, 'overflow', 'visible');
-            if (parent === frame) break;
-        }
-    }
+    // Effects can mount after the native profile. Synchronize them on the next
+    // frame so late assets and DevTools/window resizes use the final card size.
+    scheduleNativeProfileEffects(outer);
     // Constrain only siblings along the banner's ancestry. Discord retains
     // ownership of all profile content; no React nodes are moved or wrapped.
     const bannerPath = new Set();
@@ -476,29 +870,29 @@ function applyPopoutDimensions(outer) {
             if (['absolute', 'fixed'].includes(getComputedStyle(child).position) || child.matches('[class*="avatar"]')) continue;
             const childStyle = getComputedStyle(child);
             const contentWidth = Math.max(0, dimensions.detailsWidth - (parseFloat(childStyle.marginLeft) || 0) - (parseFloat(childStyle.marginRight) || 0)) + 'px';
-            setNativeStyle(outer, child, 'box-sizing', 'border-box');
-            setNativeStyle(outer, child, 'width', contentWidth);
-            setNativeStyle(outer, child, 'max-width', contentWidth);
-            setNativeStyle(outer, child, 'min-width', '0px');
+            setNativeStyle(styleOwner, child, 'box-sizing', 'border-box');
+            setNativeStyle(styleOwner, child, 'width', contentWidth);
+            setNativeStyle(styleOwner, child, 'max-width', contentWidth);
+            setNativeStyle(styleOwner, child, 'min-width', '0px');
         }
     }
-    resizeNativeBanner(outer, banner, Math.max(0, surface.clientWidth - parseFloat(getComputedStyle(surface).paddingLeft) - parseFloat(getComputedStyle(surface).paddingRight)));
+    resizeNativeBanner(styleOwner, banner, Math.max(0, surface.clientWidth - parseFloat(getComputedStyle(surface).paddingLeft) - parseFloat(getComputedStyle(surface).paddingRight)));
     if (body) {
         const bodyStyle = getComputedStyle(body);
         const bodyWidth = Math.max(0, dimensions.detailsWidth - (parseFloat(bodyStyle.marginLeft) || 0) - (parseFloat(bodyStyle.marginRight) || 0)) + 'px';
-        setNativeAttribute(outer, body, 'data-qw-native-details', 'true');
-        setNativeStyle(outer, body, 'box-sizing', 'border-box');
-        setNativeStyle(outer, body, 'width', bodyWidth);
-        setNativeStyle(outer, body, 'max-width', bodyWidth);
-        setNativeStyle(outer, body, 'min-height', '0px');
-        setNativeStyle(outer, body, 'flex', '0 1 auto');
-        setNativeStyle(outer, body, 'overflow-y', 'auto');
-        setNativeStyle(outer, body, 'overflow-x', 'hidden');
-        setNativeStyle(outer, body, 'scrollbar-width', 'thin');
-        setNativeStyle(outer, body, 'scrollbar-color', 'rgba(127, 127, 127, 0.3) transparent');
+        setNativeAttribute(styleOwner, body, 'data-qw-native-details', 'true');
+        setNativeStyle(styleOwner, body, 'box-sizing', 'border-box');
+        setNativeStyle(styleOwner, body, 'width', bodyWidth);
+        setNativeStyle(styleOwner, body, 'max-width', bodyWidth);
+        setNativeStyle(styleOwner, body, 'min-height', '0px');
+        setNativeStyle(styleOwner, body, 'flex', '0 1 auto');
+        setNativeStyle(styleOwner, body, 'overflow-y', 'auto');
+        setNativeStyle(styleOwner, body, 'overflow-x', 'hidden');
+        setNativeStyle(styleOwner, body, 'scrollbar-width', 'thin');
+        setNativeStyle(styleOwner, body, 'scrollbar-color', 'rgba(127, 127, 127, 0.3) transparent');
         const rect = body.getBoundingClientRect(), card = surface.getBoundingClientRect();
         const scaleY = surface.offsetHeight ? card.height / surface.offsetHeight : 1;
-        setNativeStyle(outer, body, 'max-height', Math.max(0, (card.bottom - rect.top) / (scaleY || 1) - 14) + 'px');
+        setNativeStyle(styleOwner, body, 'max-height', Math.max(0, (card.bottom - rect.top) / (scaleY || 1) - 14) + 'px');
     }
     return parts;
 }
@@ -582,13 +976,24 @@ function findNativeChatAction(outer, action) {
     const labels = {
         call: /call|مكالمة|اتصال/i,
         video: /video|فيديو|مرئي/i,
-        more: /more|المزيد|خيارات/i
+        more: /more|المزيد|خيارات/i,
+        friend: /add friend|friend request|إضافة صديق|طلب صداقة/i,
+        message: /^(?:message(?:\s+@?.+)?|send message(?:\s+to\s+.+)?|رسالة(?:\s+.+)?|إرسال رسالة(?:\s+.+)?|مراسلة(?:\s+.+)?)$/i
     };
     return [...outer.querySelectorAll('button, [role="button"]')].find(button => {
         if (button.closest(".qw-root") || button.className?.includes?.("qw-")) return false;
-        const label = button.getAttribute("aria-label") || button.getAttribute("title") || "";
+        const label = button.getAttribute("aria-label") || button.getAttribute("title") || button.textContent?.trim() || "";
         return labels[action].test(label) && (action !== "call" || !labels.video.test(label));
     });
+}
+
+function findNativeProfileAction(surface) {
+    if (!surface) return null;
+    return findNativeChatAction(surface, 'more')
+        || findNativeChatAction(surface, 'call')
+        || findNativeChatAction(surface, 'video')
+        || findNativeChatAction(surface, 'friend')
+        || findNativeChatAction(surface, 'message');
 }
 
 function getNativeProfileActions(surface, action) {
@@ -597,39 +1002,99 @@ function getNativeProfileActions(surface, action) {
     if (named && named !== action && surface.contains(named)) return named;
     // Native action containers have changed names between Discord versions.
     // Find their compact shared row without moving the banner or its content.
+    let singleButtonRow = null;
     for (let node = action.parentElement; node && node !== surface && surface.contains(node); node = node.parentElement) {
         const rect = node.getBoundingClientRect();
         if (rect.height > 80 || rect.width > Math.max(320, surface.getBoundingClientRect().width * .7)) break;
         const buttons = [...node.querySelectorAll('button, [role="button"]')].filter(button => !button.closest('.qw-root') && button.getClientRects().length);
         if (buttons.length > 1) return node;
+        if (buttons.length === 1) singleButtonRow = node;
     }
-    return null;
+    return singleButtonRow;
 }
 
-function alignNativeProfileActions(outer, actions, controls) {
-    if (!actions || !controls) return;
+function positionNativeProfileActions(outer, actions, left, top, maxWidth) {
+    if (!actions) return;
     setNativeAttribute(outer, actions, 'data-qw-native-actions', 'true');
     setNativeStyle(outer, actions, 'width', 'max-content');
-    setNativeStyle(outer, actions, 'max-width', 'none');
-    setNativeStyle(outer, actions, 'flex-wrap', 'nowrap');
+    setNativeStyle(outer, actions, 'max-width', Math.max(32, maxWidth) + 'px');
+    setNativeStyle(outer, actions, 'flex-wrap', 'wrap');
     setNativeStyle(outer, actions, 'flex-shrink', '0');
     let style = getComputedStyle(actions);
     if (style.position === 'static') setNativeStyle(outer, actions, 'position', 'relative');
-    // Position from measured edges in the row's own coordinate space. Its
-    // parent need not be the profile surface, and native transforms stay intact.
+    // Move Discord's own row without reparenting it out of React's tree.
     setNativeStyle(outer, actions, 'left', 'auto');
     style = getComputedStyle(actions);
-    const row = actions.getBoundingClientRect(), target = controls.getBoundingClientRect();
+    const row = actions.getBoundingClientRect();
     const scaleX = actions.offsetWidth ? row.width / actions.offsetWidth : 1;
     const scaleY = actions.offsetHeight ? row.height / actions.offsetHeight : 1;
-    const deltaX = target.left - 6 * (scaleX || 1) - row.right;
-    const deltaY = target.top + target.height / 2 - row.top - row.height / 2;
+    const deltaX = left - row.left;
+    const deltaY = top - row.top;
     if (Math.abs(deltaX) > .5) setNativeStyle(outer, actions, 'right', ((parseFloat(style.right) || 0) - deltaX / (scaleX || 1)) + 'px');
     if (Math.abs(deltaY) > .5) setNativeStyle(outer, actions, 'top', ((parseFloat(style.top) || 0) + deltaY / (scaleY || 1)) + 'px');
 }
 
+function positionProfileControl(outer, element, viewportLeft, viewportTop) {
+    if (!outer || !element) return;
+    const outerRect = outer.getBoundingClientRect();
+    const scaleX = outer.offsetWidth ? outerRect.width / outer.offsetWidth : 1;
+    const scaleY = outer.offsetHeight ? outerRect.height / outer.offsetHeight : 1;
+    const styles = {
+        position: 'absolute',
+        left: (viewportLeft - outerRect.left) / (scaleX || 1) + 'px',
+        top: (viewportTop - outerRect.top) / (scaleY || 1) + 'px',
+        right: 'auto',
+        bottom: 'auto'
+    };
+    for (const [property, value] of Object.entries(styles)) {
+        if (element.style.getPropertyValue(property) !== value || element.style.getPropertyPriority(property) !== 'important') {
+            element.style.setProperty(property, value, 'important');
+        }
+    }
+}
+
+function layoutProfileTopControls(outer) {
+    if (!outer?.isConnected) return;
+    const { surface } = getNativeProfileParts(outer);
+    if (!surface?.isConnected) return;
+    const surfaceRect = surface.getBoundingClientRect();
+    const scaleX = surface.offsetWidth ? surfaceRect.width / surface.offsetWidth : 1;
+    const scaleY = surface.offsetHeight ? surfaceRect.height / surface.offsetHeight : 1;
+    const edge = 14 * scaleX, gap = 6 * scaleX, top = surfaceRect.top + 16 * scaleY;
+    const closeBtn = outer.querySelector('.qw-top-close-btn');
+    const gearBtn = outer.querySelector('.qw-floating-gear-btn');
+
+    let closeLeft = surfaceRect.right - edge;
+    if (closeBtn) {
+        const closeRect = closeBtn.getBoundingClientRect();
+        closeLeft -= closeRect.width || 32 * scaleX;
+        positionProfileControl(outer, closeBtn, closeLeft, top);
+    }
+
+    const left = surfaceRect.left + edge;
+    const safeRight = closeBtn ? closeLeft - gap : surfaceRect.right - edge;
+    const gearWidth = gearBtn ? (gearBtn.getBoundingClientRect().width || 32 * scaleX) : 0;
+    const action = findNativeProfileAction(surface);
+    const actions = getNativeProfileActions(surface, action);
+    const availableWidth = Math.max(32 * scaleX, safeRight - left);
+    const actionsMaxWidth = Math.max(32 * scaleX, availableWidth - (gearBtn ? gearWidth + gap : 0));
+
+    if (actions) positionNativeProfileActions(outer, actions, left, top, actionsMaxWidth / (scaleX || 1));
+
+    if (gearBtn) {
+        const actionsRect = actions?.getBoundingClientRect();
+        let gearLeft = actionsRect ? actionsRect.right + gap : left;
+        let gearTop = top;
+        if (gearLeft + gearWidth > safeRight + .5) {
+            gearLeft = left;
+            gearTop = (actionsRect?.bottom || top) + 6 * scaleY;
+        }
+        positionProfileControl(outer, gearBtn, gearLeft, gearTop);
+    }
+}
+
 function getNativeChatHost(parts) {
-    const effects = [...parts.frame.querySelectorAll('[class*="profileEffects_"], [class*="profileEffect_"]')];
+    const effects = getNativeProfileEffectRoots(parts.frame);
     // Share a paint context with the real effects, including versions where
     // Discord places the effect beside its themed inner surface.
     for (let host = parts.inner; host && parts.frame.contains(host); host = host.parentElement) {
@@ -641,7 +1106,7 @@ function getNativeChatHost(parts) {
 
 function updateNativeChatLayer(parts, ui) {
     let level = 1;
-    for (const effect of parts.frame.querySelectorAll('[class*="profileEffects_"], [class*="profileEffect_"]')) {
+    for (const effect of getNativeProfileEffectRoots(parts.frame)) {
         for (const visual of [effect, ...effect.querySelectorAll('*')]) {
             const nativeLevel = parseInt(getComputedStyle(visual).zIndex, 10);
             if (Number.isFinite(nativeLevel)) level = Math.max(level, nativeLevel + 1);
@@ -674,12 +1139,12 @@ function attachChatLayout(outer, ui) {
         }
         let rect = surface.getBoundingClientRect();
         let bannerRect = banner?.getBoundingClientRect();
-        const controls = header.querySelector('.qw-header-controls');
-        const controlsWidth = controls.getBoundingClientRect().width;
-        const action = findNativeChatAction(outer, 'more') || findNativeChatAction(outer, 'call');
+        const action = findNativeProfileAction(surface);
         const actions = getNativeProfileActions(surface, action);
         const actionsRect = actions?.getBoundingClientRect();
-        const geometry = [rect.x, rect.y, rect.width, rect.height, bannerRect?.bottom, controlsWidth, actionsRect?.x, actionsRect?.y, actionsRect?.width, actionsRect?.height, window.innerWidth, window.innerHeight].join(':');
+        const closeRect = outer.querySelector('.qw-top-close-btn')?.getBoundingClientRect();
+        const gearRect = outer.querySelector('.qw-floating-gear-btn')?.getBoundingClientRect();
+        const geometry = [rect.x, rect.y, rect.width, rect.height, bannerRect?.bottom, actionsRect?.width, actionsRect?.height, closeRect?.width, gearRect?.width, window.innerWidth, window.innerHeight].join(':');
         if (!force && geometry === lastGeometry) return;
         parts = applyPopoutDimensions(outer);
         rect = surface.getBoundingClientRect();
@@ -710,8 +1175,8 @@ function attachChatLayout(outer, ui) {
         positionOwnedOverlay(ui, left, top);
         header.style.width = width / (uiScaleX || 1) + 'px';
         positionOwnedOverlay(header, left, rect.top + (parseFloat(nativeStyle.borderTopWidth) + 8) * scaleY);
-        // Keep Discord's real native action buttons. Settings and X share
-        // their row over the full-width banner instead of a second chat header.
+        // Keep Discord's real native action buttons and hide the fallback
+        // controls that only exist for older profile implementations.
         for (const button of header.querySelectorAll('[data-qw-native-action]')) button.hidden = true;
         if (action) {
             const actionStyle = getComputedStyle(action);
@@ -720,11 +1185,9 @@ function attachChatLayout(outer, ui) {
                 if (header.style.getPropertyValue(name) !== value) header.style.setProperty(name, value);
             }
         }
-        alignNativeProfileActions(outer, actions, controls);
-        // Keep the empty drag region clear of native buttons even when the
-        // chat glass paints above their original stacking layer.
         const spacer = header.querySelector('.qw-header-spacer');
-        spacer.style.marginRight = actions ? (actions.getBoundingClientRect().width + 6 * scaleX) / (uiScaleX || 1) + 'px' : '0px';
+        spacer.style.marginRight = '0px';
+        layoutProfileTopControls(outer);
         if (activeSettingsOwner === outer) positionFloatingSettings(activeSettingsModal, outer);
         ui.dataset.side = 'inside';
         lastGeometry = geometry;
@@ -755,13 +1218,14 @@ function attachChatLayout(outer, ui) {
 
 function positionProfilePopout(outer, index = 0) {
     if (!outer) return;
-    const parts = applyPopoutDimensions(outer);
-    const width = getAttachedProfileWidth();
+    applyPopoutDimensions(outer);
+    const width = getAttachedProfileWidth(outer);
+    const height = getAttachedProfileHeight(outer);
     const saved = getStoredConfig().lastPosition;
     const offset = index * 24;
     const combinedWidth = width;
     const left = Math.max(10, Math.min(window.innerWidth - width - 10, (saved?.left ?? (window.innerWidth - combinedWidth) / 2) + offset));
-    const top = Math.max(10, Math.min(window.innerHeight - 80, (saved?.top ?? (window.innerHeight - getAttachedProfileHeight()) / 2) + offset));
+    const top = Math.max(10, Math.min(window.innerHeight - Math.min(80, height) - 10, (saved?.top ?? (window.innerHeight - height) / 2) + offset));
     const positionStyles = { position: "fixed", transform: "none", right: "auto", bottom: "auto", margin: "0" };
     if (getNativeProfileFrame(outer) !== outer) positionStyles.overflow = "visible";
     for (const [property, value] of Object.entries(positionStyles)) {
@@ -776,7 +1240,9 @@ function enforcePopoutWidth() {
     document.documentElement.style.setProperty("--qw-profile-width", w);
     const outers = new Set([...ownedNativeProfiles.values(), ...activeSessions.values()].map(data => data.outer).filter(outer => outer?.isConnected));
     for (const outer of outers) {
-        applyPopoutDimensions(outer);
+        if (getNativeProfileLayoutMode(outer) === 'split') applyPopoutDimensions(outer);
+        else applyProfilePointerRouting(outer, getNativeProfileParts(outer));
+        layoutProfileTopControls(outer);
     }
     for (const data of activeSessions.values()) data.session.layout?.refresh();
 }
@@ -827,6 +1293,10 @@ function cleanupNativeSession(userId, requestClose = false) {
     }
     const data = activeSessions.get(userId);
     if (!data) {
+        if (focusedProfileRequest === userId) {
+            cancelPendingProfileFocus();
+            focusedProfileRequest = sessionStack.length ? String(sessionStack[sessionStack.length - 1]) : null;
+        }
         if (requestClose) destroyOwnedNativeProfile(userId);
         return;
     }
@@ -847,6 +1317,8 @@ function cleanupNativeSession(userId, requestClose = false) {
     closeFloatingSettings();
     if (activeLightboxCleanup && activeLightboxOwner === data.outer) activeLightboxCleanup();
     try { data.session.destroy(); } catch (e) {}
+    data.syntheticFooter?.remove();
+    setNativeProfileLayoutMode(data.outer, 'native');
     for (const [handle, binding] of draggableHandles) {
         if (binding.outer === data.outer) binding.cleanup();
     }
@@ -858,6 +1330,7 @@ function cleanupNativeSession(userId, requestClose = false) {
         if (value === null) data.outer.removeAttribute(name);
         else data.outer.setAttribute(name, value);
     }
+    if (!requestClose && owned) owned.initializedOuter = null;
     if (requestClose && owned) {
         destroyOwnedNativeProfile(userId);
     } else if (nativeClose) {
@@ -958,6 +1431,11 @@ const PLUGIN_STYLES = `
 [data-qw-managed="true"] [data-qw-native-surface="true"] {
     pointer-events: auto !important;
 }
+[data-qw-managed="true"] [data-qw-native-actions="true"] {
+    pointer-events: auto !important;
+    z-index: 1000 !important;
+    gap: 6px !important;
+}
 
 .qw-native-hidden { display: none !important; }
 
@@ -1037,6 +1515,7 @@ const PLUGIN_STYLES = `
     border: 0 !important;
 }
 .qw-top-close-btn {
+    position: absolute !important;
     width: 32px !important;
     height: 32px !important;
     min-width: 32px !important;
@@ -1055,6 +1534,7 @@ const PLUGIN_STYLES = `
     box-shadow: none !important;
     flex-shrink: 0 !important;
     z-index: 1000 !important;
+    pointer-events: auto !important;
 }
 .qw-top-close-btn:hover {
     color: #ffffff !important;
@@ -1117,15 +1597,16 @@ const PLUGIN_STYLES = `
     display: flex;
     flex-direction: column;
     gap: 4px;
+    overflow-anchor: none;
     scrollbar-width: thin;
     scrollbar-color: var(--scrollbar-auto-thumb, rgba(255, 255, 255, 0.2)) transparent;
 }
 .qw-scroller::-webkit-scrollbar { width: 5px; }
 .qw-scroller::-webkit-scrollbar-thumb { background: var(--scrollbar-auto-thumb, rgba(255, 255, 255, 0.2)); border-radius: 4px; }
 .qw-loading-banner { text-align: center; font-size: 11px; color: var(--text-muted, #949ba4); padding: 3px 0; }
-.qw-messages-container { display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; }
+.qw-messages-container { display: flex; flex-direction: column; gap: 6px; flex-shrink: 0; }
 .qw-msg-row { display: flex; position: relative; flex-direction: column; width: 100%; }
-.qw-msg-row.qw-msg-has-header { margin-top: 10px; }
+.qw-msg-row.qw-msg-has-header { margin-top: 7px; }
 .qw-msg-header { display: flex; position: absolute; left: 0; top: 8px; }
 .qw-msg-me .qw-msg-header { visibility: hidden; }
 .qw-author-avatar { width: 34px; height: 34px; border-radius: 50%; object-fit: cover; }
@@ -1170,9 +1651,9 @@ const PLUGIN_STYLES = `
 }
 .qw-msg-bubble {
     max-width: 85%;
-    padding: 12px 16px;
+    padding: 7px 10px;
     font-size: 13px;
-    line-height: 1.42;
+    line-height: 1.32;
     word-break: break-word;
     position: relative;
     unicode-bidi: plaintext;
@@ -1183,23 +1664,42 @@ const PLUGIN_STYLES = `
     background: color-mix(in srgb, var(--qw-profile-primary, #292a2e) 88%, var(--qw-profile-text, #fff) 12%) !important;
     border: 1px solid rgba(255, 255, 255, 0.02) !important;
     color: var(--qw-profile-text, #dbdee1) !important;
-    border-radius: 16px 16px 16px 5px;
+    border-radius: 12px 12px 12px 4px;
     box-shadow: none !important;
 }
 .qw-msg-me .qw-msg-bubble {
     background: #99578d !important;
     color: #ffffff !important;
-    border-radius: 16px 16px 5px 16px;
+    border-radius: 12px 12px 4px 12px;
     box-shadow: none !important;
 }
 .qw-msg-text { unicode-bidi: plaintext; text-align: start; }
-.qw-msg-time { font-size: 10px; opacity: 0.65; margin-top: 5px; text-align: start; }
-.qw-reply-banner { display: flex; gap: 4px; font-size: 11px; padding-bottom: 4px; margin-bottom: 4px; border-bottom: 1px solid rgba(255, 255, 255, 0.12); opacity: 0.85; }
+.qw-msg-time { font-size: 9px; line-height: 1.1; opacity: 0.65; margin-top: 3px; text-align: start; }
+.qw-reply-banner { display: flex; gap: 4px; font-size: 11px; padding-bottom: 3px; margin-bottom: 3px; border-bottom: 1px solid rgba(255, 255, 255, 0.12); opacity: 0.85; }
 .qw-reply-author { font-weight: 600; }
 .qw-reply-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px; }
-.qw-attachments { margin-top: 4px; display: flex; flex-direction: column; gap: 4px; }
-.qw-msg-img { max-width: 100%; max-height: 130px; border-radius: 6px; display: block; object-fit: cover; cursor: pointer; }
-.qw-msg-video { display: block; width: 100%; max-width: 100%; max-height: 220px; border-radius: 8px; background: #000; object-fit: contain; }
+.qw-attachments { margin-top: 3px; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.qw-msg-bubble.qw-msg-media-only { padding: 5px; }
+.qw-msg-media-only .qw-attachments { margin-top: 0; }
+.qw-msg-media-only .qw-msg-time { margin: 3px 3px 0; }
+.qw-msg-img { max-width: 100%; max-height: 130px; width: auto; height: auto; border-radius: 6px; display: block; object-fit: contain; cursor: pointer; }
+.qw-msg-video { display: block; width: auto; height: auto; max-width: 100%; max-height: 220px; border-radius: 7px; background: #000; object-fit: contain; color-scheme: dark; }
+.qw-msg-video::-webkit-media-controls-panel { background: linear-gradient(to top, rgba(0, 0, 0, 0.9), rgba(0, 0, 0, 0.18)) !important; }
+.qw-msg-video::-webkit-media-controls-play-button,
+.qw-msg-video::-webkit-media-controls-mute-button,
+.qw-msg-video::-webkit-media-controls-fullscreen-button,
+.qw-msg-video::-webkit-media-controls-overflow-button,
+.qw-msg-video::-webkit-media-controls-toggle-closed-captions-button {
+    filter: invert(1) brightness(2) !important;
+    opacity: 1 !important;
+}
+.qw-msg-video::-webkit-media-controls-current-time-display,
+.qw-msg-video::-webkit-media-controls-time-remaining-display {
+    color: #fff !important;
+    text-shadow: 0 1px 2px #000 !important;
+}
+.qw-msg-video::-webkit-media-controls-timeline,
+.qw-msg-video::-webkit-media-controls-volume-slider { filter: brightness(1.8) !important; }
 .qw-msg-file { font-size: 12px; color: inherit; text-decoration: underline; }
 .qw-file-card, .qw-link-preview {
     display: flex !important;
@@ -1520,16 +2020,17 @@ const PLUGIN_STYLES = `
 .qw-voice-msg-player {
     display: flex;
     align-items: center;
-    margin-top: 4px;
+    margin-top: 0;
 }
 .qw-voice-msg-player audio {
-    height: 32px;
-    max-width: 230px;
-    border-radius: 16px;
+    width: 210px;
+    max-width: 100%;
+    height: 30px;
+    border-radius: 15px;
     filter: invert(0.9) hue-rotate(180deg);
 }
 .qw-floating-gear-btn {
-    position: static !important;
+    position: absolute !important;
     width: 32px !important;
     height: 32px !important;
     min-width: 32px !important;
@@ -1546,10 +2047,9 @@ const PLUGIN_STYLES = `
     transition: transform 0.25s ease, background 0.2s ease, color 0.2s ease !important;
     box-shadow: none !important;
     padding: 0 !important;
+    pointer-events: auto !important;
 }
-.qw-header-controls .qw-top-close-btn { position: static !important; background: color-mix(in srgb, var(--qw-profile-primary, #151619) 70%, transparent) !important; }
 .qw-header-controls button { color: var(--qw-profile-text, #dbdee1) !important; }
-[data-qw-managed="true"] > .qw-top-close-btn { position: absolute; top: 16px; right: 14px; }
 .qw-floating-gear-btn:hover {
     color: #ffffff !important;
     background: rgba(0, 0, 0, 0.8) !important;
@@ -1701,7 +2201,7 @@ const PLUGIN_STYLES = `
 #qw-lightbox { position: fixed !important; inset: 0 !important; z-index: 2000000 !important; display: flex !important; align-items: center !important; justify-content: center !important; overflow: hidden !important; pointer-events: auto !important; }
 .qw-lightbox-backdrop { position: absolute !important; inset: 0 !important; background: rgba(0, 0, 0, 0.85) !important; backdrop-filter: blur(8px) !important; cursor: zoom-out !important; pointer-events: auto !important; }
 .qw-lightbox-content { position: relative !important; z-index: 2000001 !important; display: flex !important; align-items: center !important; justify-content: center !important; pointer-events: auto !important; }
-.qw-lightbox-img { max-width: 50vw !important; max-height: 50vh !important; border-radius: 8px !important; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.7) !important; object-fit: contain !important; cursor: zoom-in !important; transform: scale(1); transform-origin: center center !important; transition: transform 0.12s ease-out !important; will-change: transform; user-select: none !important; -webkit-user-drag: none !important; }
+.qw-lightbox-img { max-width: 92vw !important; max-height: 90vh !important; width: auto !important; height: auto !important; border-radius: 8px !important; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.7) !important; object-fit: contain !important; cursor: zoom-in !important; transform: scale(1); transform-origin: center center !important; transition: transform 0.12s ease-out !important; will-change: transform; user-select: none !important; -webkit-user-drag: none !important; image-rendering: auto !important; }
 .qw-lightbox-actions { position: fixed !important; top: 16px !important; right: 16px !important; z-index: 2000002 !important; display: flex !important; align-items: center !important; gap: 8px !important; margin: 0 !important; padding: 6px !important; border: 1px solid rgba(255, 255, 255, 0.18) !important; border-radius: 10px !important; background: rgba(20, 20, 24, 0.72) !important; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45) !important; backdrop-filter: blur(10px) !important; pointer-events: auto !important; }
 .qw-lightbox-btn { width: 36px !important; height: 36px !important; padding: 0 !important; border: 1px solid rgba(255, 255, 255, 0.22) !important; border-radius: 8px !important; background: rgba(255, 255, 255, 0.12) !important; color: #fff !important; cursor: pointer !important; display: inline-flex !important; align-items: center !important; justify-content: center !important; text-decoration: none !important; transition: background 0.15s, border-color 0.15s, transform 0.15s !important; }
 .qw-lightbox-btn svg { width: 19px !important; height: 19px !important; fill: none !important; stroke: currentColor !important; stroke-width: 2 !important; stroke-linecap: round !important; stroke-linejoin: round !important; pointer-events: none !important; }
@@ -1797,7 +2297,6 @@ function getConversationRoleColor(guildId, userId, outer) {
             }
         }
     }
-
     const memberColor = member?.colorString || member?.colorStrings?.primaryColor;
     if (isUsableCssColor(memberColor)) return memberColor.trim();
 
@@ -1887,8 +2386,8 @@ function getProfileDropTargetAtPoint(x, y) {
         const parts = getNativeProfileParts(data.outer);
         // Full-screen portal/dialog wrappers must not count as profile targets.
         const regions = [parts.surface, data.session.ui].filter(Boolean);
-        const maxWidth = Math.min(window.innerWidth, getAttachedProfileWidth() + 160);
-        const maxHeight = Math.min(window.innerHeight, getAttachedProfileHeight() + 160);
+        const maxWidth = Math.min(window.innerWidth, getAttachedProfileWidth(data.outer) + 160);
+        const maxHeight = Math.min(window.innerHeight, getAttachedProfileHeight(data.outer) + 160);
         if (regions.some(region => {
             const rect = region.getBoundingClientRect();
             return rect.width > 0 && rect.height > 0
@@ -2330,21 +2829,19 @@ function toggleFloatingSettings(gearBtn, popout) {
 function attachFloatingGear(outer) {
     if (!outer) return;
     const target = getPopoutOuter(outer) || outer;
-    const controls = activeSessions.get(getUserId(getNativeProfileFrame(target)))?.session.ui?.querySelector(".qw-header-controls") || target.querySelector(".qw-header-controls");
-    if (!controls) return;
-    const existingGear = target.querySelector(".qw-floating-gear-btn") || controls.querySelector(".qw-floating-gear-btn");
+    const session = [...activeSessions.values()].find(data => data.outer === target)?.session;
+    if (!session) return;
+    const existingGear = target.querySelector(".qw-floating-gear-btn");
     if (existingGear) {
-        if (existingGear.parentElement !== controls) controls.appendChild(existingGear);
+        if (existingGear.parentElement !== target) target.appendChild(existingGear);
+        layoutProfileTopControls(target);
         return;
     }
-    try {
-        if (window.getComputedStyle(target).position === "static") {
-            target.style.position = "relative";
-        }
-    } catch (e) {}
     const gearBtn = document.createElement("button");
     gearBtn.className = "qw-floating-gear-btn";
+    gearBtn.type = "button";
     gearBtn.title = "MBDM Settings";
+    gearBtn.setAttribute("aria-label", "MBDM Settings");
     gearBtn.innerHTML = `
         <svg viewBox="0 0 24 24">
             <path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"></path>
@@ -2357,33 +2854,37 @@ function attachFloatingGear(outer) {
         e.stopPropagation();
         toggleFloatingSettings(gearBtn, target);
     });
-    controls.appendChild(gearBtn);
+    target.appendChild(gearBtn);
+    layoutProfileTopControls(target);
 }
 
 function attachTopCloseBtn(outer, userId) {
     if (!outer) return;
-    const controls = activeSessions.get(String(userId))?.session.ui?.querySelector(".qw-header-controls") || outer.querySelector(".qw-header-controls");
-    const existing = outer.querySelector(".qw-top-close-btn") || controls?.querySelector(".qw-top-close-btn");
+    const target = getPopoutOuter(outer) || outer;
+    const existing = target.querySelector(".qw-top-close-btn");
     if (existing) {
-        if (controls && existing.parentElement !== controls) {
+        if (existing.parentElement !== target) {
             existing.style.cssText = "";
-            controls.appendChild(existing);
+            target.appendChild(existing);
         }
+        layoutProfileTopControls(target);
         return;
     }
     const closeBtn = document.createElement("button");
     closeBtn.className = "qw-top-close-btn";
+    closeBtn.type = "button";
     closeBtn.title = "Close Profile";
     closeBtn.setAttribute("aria-label", "Close Profile");
     closeBtn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M18.4 4 12 10.4 5.6 4 4 5.6l6.4 6.4L4 18.4 5.6 20l6.4-6.4 6.4 6.4 1.6-1.6-6.4-6.4L20 5.6 18.4 4Z"></path></svg>';
     closeBtn.addEventListener("pointerdown", event => event.stopPropagation());
+    closeBtn.addEventListener("mousedown", event => event.stopPropagation());
     closeBtn.addEventListener("click", event => {
         event.preventDefault();
         event.stopPropagation();
         closeSession(userId);
     });
-    // Keep native profile actions in place; the pair closes from its right edge.
-    (controls || outer).appendChild(closeBtn);
+    target.appendChild(closeBtn);
+    layoutProfileTopControls(target);
 }
 
 function escapeHtml(str) {
@@ -2749,9 +3250,12 @@ async function downloadImage(url, filename = "") {
 let activeLightboxCleanup = null;
 let activeLightboxOwner = null;
 
-function openLightbox(url, nativeProfile = null) {
-    if (!url) return;
+function openLightbox(url, nativeProfile = null, fallbackUrls = []) {
+    const sources = uniqueMediaUrls([url, ...fallbackUrls]);
+    if (!sources.length) return;
     if (activeLightboxCleanup) activeLightboxCleanup();
+    let sourceIndex = 0;
+    const originalUrl = sources[0];
 
     const overlay = document.createElement("div");
     overlay.id = "qw-lightbox";
@@ -2780,13 +3284,19 @@ function openLightbox(url, nativeProfile = null) {
     const openLink = overlay.querySelector(".qw-lightbox-link");
     const downloadBtn = overlay.querySelector("#qw-lightbox-download");
     const imgEl = overlay.querySelector(".qw-lightbox-img");
-    imgEl.src = url;
+    const getActiveUrl = () => sources[sourceIndex] || sources[0];
+    imgEl.addEventListener("error", () => {
+        if (sourceIndex + 1 >= sources.length) return;
+        sourceIndex += 1;
+        imgEl.src = getActiveUrl();
+    });
+    imgEl.src = getActiveUrl();
 
     if (downloadBtn) {
         downloadBtn.addEventListener("click", e => {
             e.preventDefault();
             e.stopPropagation();
-            downloadImage(url);
+            downloadImage(originalUrl);
         });
     }
 
@@ -2794,7 +3304,7 @@ function openLightbox(url, nativeProfile = null) {
         openLink.addEventListener("click", e => {
             e.preventDefault();
             e.stopPropagation();
-            openUrl(url);
+            openUrl(originalUrl);
         });
     }
 
@@ -2811,7 +3321,7 @@ function openLightbox(url, nativeProfile = null) {
             if (e.button === 1) {
                 e.preventDefault();
                 e.stopPropagation();
-                openUrl(url);
+                openUrl(originalUrl);
             }
         });
         imgEl.addEventListener("wheel", handleWheel, { passive: false });
@@ -2824,7 +3334,7 @@ function openLightbox(url, nativeProfile = null) {
         e.preventDefault();
         e.stopPropagation();
         const direction = e.deltaY < 0 ? 0.1 : -0.1;
-        zoomScale = Math.min(3, Math.max(0.5, Number((zoomScale + direction).toFixed(2))));
+        zoomScale = Math.min(5, Math.max(0.5, Number((zoomScale + direction).toFixed(2))));
         imgEl.style.setProperty("transform", `scale(${zoomScale})`, "important");
         imgEl.style.setProperty("cursor", zoomScale > 1 ? "zoom-out" : "zoom-in", "important");
     }
@@ -3008,23 +3518,25 @@ function attachDraggables(popout) {
     });
 }
 
-function createMessageImage(url, fallbackLabel = "", alternativeUrls = []) {
+function createMessageImage(url, fallbackLabel = "", alternativeUrls = [], originalUrl = "") {
     const sources = uniqueMediaUrls([url, ...alternativeUrls]);
+    const fullQualitySources = uniqueMediaUrls([originalUrl, ...sources]);
     let sourceIndex = 0;
     const img = document.createElement("img");
     img.className = "qw-msg-img";
     img.loading = "lazy";
     img.alt = fallbackLabel || "Image attachment";
     img.title = "Left-click: View | Middle-click: Open in Browser";
+    img.dataset.originalUrl = fullQualitySources[0] || sources[0] || "";
     img.addEventListener("click", e => {
         e.stopPropagation();
-        openLightbox(sources[sourceIndex], getChatProfileOwner(img));
+        openLightbox(fullQualitySources[0], getChatProfileOwner(img), fullQualitySources.slice(1));
     });
     img.addEventListener("auxclick", e => {
         if (e.button === 1) {
             e.preventDefault();
             e.stopPropagation();
-            openUrl(sources[sourceIndex]);
+            openUrl(fullQualitySources[0] || sources[sourceIndex]);
         }
     });
 
@@ -3037,7 +3549,7 @@ function createMessageImage(url, fallbackLabel = "", alternativeUrls = []) {
 
         if (fallbackLabel) {
             const link = document.createElement("a");
-            const fallbackUrl = sources.find(isGifUrl) || sources[0];
+            const fallbackUrl = fullQualitySources.find(isGifUrl) || fullQualitySources[0] || sources[0];
             link.href = fallbackUrl;
             link.target = "_blank";
             link.rel = "noreferrer";
@@ -3310,7 +3822,7 @@ function createMessageElement(msg, currentUserId, prevMsg) {
 
             if (isImg) {
                 const gifFallback = isGifUrl(att.url) || contentType === "image/gif" ? "Open GIF" : "";
-                attContainer.appendChild(createMessageImage(attachmentSources[0], gifFallback, attachmentSources.slice(1)));
+                attContainer.appendChild(createMessageImage(attachmentSources[0], gifFallback, attachmentSources.slice(1), att.url));
                 attachmentSources.forEach(source => renderedMedia.add(getMediaUrlKey(source)));
             } else if (isVideo) {
                 attContainer.appendChild(createMessageVideo(attachmentSources, { originalUrl: att.url, filename: att.filename }));
@@ -3327,7 +3839,8 @@ function createMessageElement(msg, currentUserId, prevMsg) {
     for (const gifSources of collectMessageGifSources(msg)) {
         const mediaKeys = gifSources.map(getMediaUrlKey).filter(Boolean);
         if (!gifSources.length || mediaKeys.some(key => renderedMedia.has(key))) continue;
-        attContainer.appendChild(createMessageImage(gifSources[0], "Open GIF", gifSources.slice(1)));
+        const originalGifUrl = [...gifSources].reverse().find(isGifUrl) || gifSources[gifSources.length - 1];
+        attContainer.appendChild(createMessageImage(gifSources[0], "Open GIF", gifSources.slice(1), originalGifUrl));
         mediaKeys.forEach(key => renderedMedia.add(key));
     }
 
@@ -3340,7 +3853,7 @@ function createMessageElement(msg, currentUserId, prevMsg) {
             attContainer.appendChild(createMessageVideo([url], { originalUrl: url, filename: getUrlFilename(url) }));
             renderedMedia.add(mediaKey);
         } else if (isDirectImageUrl(url)) {
-            attContainer.appendChild(createMessageImage(url));
+            attContainer.appendChild(createMessageImage(url, "", [], url));
             renderedMedia.add(mediaKey);
         }
     }
@@ -3381,7 +3894,8 @@ function createMessageElement(msg, currentUserId, prevMsg) {
             const mediaKeys = [...imageSources, relatedUrl].map(getMediaUrlKey).filter(Boolean);
             if (!mediaKeys.some(key => renderedMedia.has(key))) {
                 const gifFallback = imageSources.some(isGifUrl) ? "Open GIF" : "";
-                attContainer.appendChild(createMessageImage(imageSources[0], gifFallback, imageSources.slice(1)));
+                const originalImageUrl = embed?.image?.url || imageSources[imageSources.length - 1];
+                attContainer.appendChild(createMessageImage(imageSources[0], gifFallback, imageSources.slice(1), originalImageUrl));
                 mediaKeys.forEach(key => renderedMedia.add(key));
             }
         }
@@ -3389,7 +3903,11 @@ function createMessageElement(msg, currentUserId, prevMsg) {
 
     removeLinksWithRenderedPreviews(row, new Set([...renderedMedia, ...renderedPreviews]));
 
-    if (!attContainer.childElementCount) attContainer.remove();
+    if (!attContainer.childElementCount) {
+        attContainer.remove();
+    } else if (!row.querySelector(".qw-msg-text") && !row.querySelector(".qw-reply-banner")) {
+        row.querySelector(".qw-msg-bubble")?.classList.add("qw-msg-media-only");
+    }
 
     return row;
 }
@@ -3761,6 +4279,10 @@ class WhisperSession {
         this.hasMoreOlder = true;
         this.destroyed = false;
         this.followLatest = true;
+        this.viewportAnchor = null;
+        this.anchorRestoreFrame = 0;
+        this.anchorScrollFrame = 0;
+        this.isRestoringAnchor = false;
 
         const UserStore = getStore("UserStore", "getCurrentUser");
         const currentUser = UserStore?.getCurrentUser ? UserStore.getCurrentUser() : null;
@@ -3804,21 +4326,35 @@ class WhisperSession {
         this.container = this.ui.querySelector("#qw-messages-container");
         this.scroller = this.ui.querySelector("#qw-scroller");
         this.loadingBanner = this.ui.querySelector("#qw-loading-banner");
+        const markReadingIntent = () => {
+            if (this.destroyed) return;
+            this.followLatest = false;
+            this.viewportAnchor = this.captureViewportAnchor();
+        };
         this.scroller.addEventListener("wheel", event => {
-            if (event.deltaY < 0) this.followLatest = false;
+            if (event.deltaY < 0) markReadingIntent();
         }, { passive: true });
-        this.scroller.addEventListener("touchstart", () => { this.followLatest = false; }, { passive: true });
+        this.scroller.addEventListener("touchstart", markReadingIntent, { passive: true });
         this.scroller.addEventListener("pointerdown", event => {
-            if (event.target === this.scroller) this.followLatest = false;
+            if (event.target === this.scroller) markReadingIntent();
         });
         this.scroller.addEventListener("scroll", () => {
-            if (this.scroller.scrollHeight - this.scroller.scrollTop - this.scroller.clientHeight < 40) this.followLatest = true;
+            if (this.isRestoringAnchor) return;
+            if (this.isNearLatest()) {
+                this.followLatest = true;
+                this.viewportAnchor = null;
+            } else {
+                this.followLatest = false;
+                this.viewportAnchor = this.captureViewportAnchor();
+            }
         });
         this.container.addEventListener("load", () => {
             if (this.followLatest) this.jumpToLatest();
+            else this.scheduleViewportAnchorRestore();
         }, true);
         this.messageResizeObserver = typeof ResizeObserver === "function" ? new ResizeObserver(() => {
             if (this.followLatest) this.jumpToLatest();
+            else this.scheduleViewportAnchorRestore();
         }) : null;
         this.messageResizeObserver?.observe(this.container);
         this.messageResizeObserver?.observe(this.scroller);
@@ -3850,7 +4386,7 @@ class WhisperSession {
                 if (img && img.src) {
                     e.preventDefault();
                     e.stopPropagation();
-                    openUrl(img.src);
+                    openUrl(img.dataset.originalUrl || img.src);
                     return;
                 }
                 const link = e.target.closest("a.qw-link, a.qw-msg-file, a.qw-file-card, a.qw-link-preview");
@@ -3901,12 +4437,11 @@ class WhisperSession {
             if (this.destroyed) return;
             if (Array.isArray(res?.body)) {
                 const followLatest = this.followLatest;
-                const previousTop = this.scroller.scrollTop;
                 this.messages = res.body.reverse();
                 this.messageMap.clear();
                 for (const m of this.messages) this.messageMap.set(m.id, m);
                 this.renderAll(followLatest);
-                if (!followLatest) this.scroller.scrollTop = previousTop;
+                if (!followLatest) this.scheduleViewportAnchorRestore();
             }
         } catch (err) {
             console.error("[MBDM] Initial load error:", err);
@@ -3917,6 +4452,66 @@ class WhisperSession {
         if (this.destroyed || focusedProfileRequest !== String(this.userId)) return;
         const input = this.ui?.querySelector("#qw-input");
         if (input?.isConnected) input.focus({ preventScroll: true });
+    }
+
+    isNearLatest() {
+        if (!this.scroller) return true;
+        return this.scroller.scrollHeight - this.scroller.scrollTop - this.scroller.clientHeight < 40;
+    }
+
+    captureViewportAnchor() {
+        if (this.destroyed || !this.scroller?.isConnected || !this.container?.isConnected) return null;
+        const scrollerRect = this.scroller.getBoundingClientRect();
+        const rows = this.container.querySelectorAll(".qw-msg-row[data-message-id]");
+        let anchorRow = null;
+        for (const row of rows) {
+            const rect = row.getBoundingClientRect();
+            if (rect.bottom > scrollerRect.top + 1 && rect.top < scrollerRect.bottom - 1) {
+                anchorRow = row;
+                break;
+            }
+        }
+
+        const rowRect = anchorRow?.getBoundingClientRect();
+        return {
+            messageId: anchorRow?.dataset.messageId || null,
+            offset: rowRect ? rowRect.top - scrollerRect.top : 0,
+            scrollTop: this.scroller.scrollTop,
+            scrollHeight: this.scroller.scrollHeight
+        };
+    }
+
+    restoreViewportAnchor() {
+        if (this.destroyed || this.followLatest || !this.viewportAnchor || !this.scroller?.isConnected) return;
+        const anchor = this.viewportAnchor;
+        let nextTop = null;
+
+        if (anchor.messageId) {
+            const row = Array.from(this.container.querySelectorAll(".qw-msg-row[data-message-id]"))
+                .find(element => element.dataset.messageId === anchor.messageId);
+            if (row) {
+                const scrollerRect = this.scroller.getBoundingClientRect();
+                nextTop = this.scroller.scrollTop + row.getBoundingClientRect().top - scrollerRect.top - anchor.offset;
+            }
+        }
+
+        if (nextTop === null) {
+            nextTop = anchor.scrollTop + this.scroller.scrollHeight - anchor.scrollHeight;
+        }
+        if (!Number.isFinite(nextTop) || Math.abs(this.scroller.scrollTop - nextTop) < 0.5) return;
+
+        this.isRestoringAnchor = true;
+        this.scroller.scrollTop = nextTop;
+        cancelAnimationFrame(this.anchorScrollFrame);
+        this.anchorScrollFrame = requestAnimationFrame(() => {
+            this.isRestoringAnchor = false;
+        });
+    }
+
+    scheduleViewportAnchorRestore() {
+        if (this.destroyed || this.followLatest || !this.viewportAnchor) return;
+        cancelAnimationFrame(this.anchorRestoreFrame);
+        this.anchorRestoreFrame = requestAnimationFrame(() => this.restoreViewportAnchor());
     }
 
     applyRoleBubbleColors() {
@@ -3944,6 +4539,7 @@ class WhisperSession {
 
     scrollToLatest() {
         this.followLatest = true;
+        this.viewportAnchor = null;
         this.jumpToLatest();
         cancelAnimationFrame(this.scrollAnimation);
         this.scrollAnimation = requestAnimationFrame(() => this.jumpToLatest());
@@ -3992,12 +4588,18 @@ class WhisperSession {
 
     async loadOlder() {
         if (this.destroyed || this.isLoadingOlder || !this.hasMoreOlder || this.messages.length === 0) return;
+        this.followLatest = false;
+        this.viewportAnchor = this.captureViewportAnchor() || {
+            messageId: null,
+            offset: 0,
+            scrollTop: this.scroller.scrollTop,
+            scrollHeight: this.scroller.scrollHeight
+        };
         this.isLoadingOlder = true;
         this.loadingBanner.style.display = "block";
+        this.scheduleViewportAnchorRestore();
 
         const oldestId = this.messages[0].id;
-        const prevHeight = this.scroller.scrollHeight;
-        const prevTop = this.scroller.scrollTop;
 
         try {
             const res = await apiRequest("get", `/channels/${this.channelId}/messages`, {
@@ -4016,11 +4618,7 @@ class WhisperSession {
                     for (const m of filtered) this.messageMap.set(m.id, m);
                     this.messages = [...filtered, ...this.messages];
                     this.renderAll(false);
-
-                    requestAnimationFrame(() => {
-                        const newHeight = this.scroller.scrollHeight;
-                        this.scroller.scrollTop = newHeight - prevHeight + prevTop;
-                    });
+                    this.scheduleViewportAnchorRestore();
                 }
             } else {
                 this.hasMoreOlder = false;
@@ -4030,6 +4628,7 @@ class WhisperSession {
         } finally {
             this.isLoadingOlder = false;
             this.loadingBanner.style.display = "none";
+            this.scheduleViewportAnchorRestore();
         }
     }
 
@@ -4101,6 +4700,8 @@ class WhisperSession {
         this.destroyed = true;
         this.ui?._qwAttachmentApi?.cleanup?.();
         cancelAnimationFrame(this.scrollAnimation);
+        cancelAnimationFrame(this.anchorRestoreFrame);
+        cancelAnimationFrame(this.anchorScrollFrame);
         this.messageResizeObserver?.disconnect();
         this.layout?.destroy();
         const FluxDispatcher = getStore("FluxDispatcher", "dispatch", "subscribe");
@@ -4611,6 +5212,122 @@ async function resolveDMChannelId(userId) {
     return null;
 }
 
+function createSyntheticNativeFooter(outer) {
+    const parts = getNativeProfileParts(outer);
+    const existing = parts.frame.querySelector('.qw-native-chat-anchor');
+    if (existing) return existing;
+    const anchor = document.createElement('div');
+    anchor.className = 'qw-native-chat-anchor';
+    anchor.setAttribute('aria-hidden', 'true');
+    anchor.style.cssText = 'display: none !important; width: 0 !important; height: 0 !important; pointer-events: none !important;';
+    parts.frame.appendChild(anchor);
+    return anchor;
+}
+
+function getOwnedProfileTextbox(outer) {
+    return [...outer.querySelectorAll('[role="textbox"], textarea')].find(textbox => {
+        if (textbox.closest('main, [class*="chatContent_"], .qw-root, [role="menu"], [class*="note_"], [class*="userInfoSection_"], [class*="userBio_"], [class*="customStatus_"]')) return false;
+        return (textbox.getAttribute('aria-label') || '').includes('@')
+            || (textbox.getAttribute('placeholder') || '').includes('@')
+            || Boolean(textbox.closest('[class*="channelTextArea_"], [class*="footer_"]'));
+    }) || null;
+}
+
+async function mountOwnedProfileChat(outer, userId, nativeFooter = null, usernameHint = '') {
+    userId = String(userId);
+    if (!pluginRunning || !outer?.isConnected || pendingNativeMounts.has(outer)) return false;
+    const owned = ownedNativeProfiles.get(userId);
+    if (!owned || !isOwnedNativeProfile(outer, owned)) return false;
+    const existing = activeSessions.get(userId);
+    if (existing?.outer === outer && existing.session.ui?.isConnected) return true;
+    if (existing) cleanupNativeSession(userId);
+
+    const token = { userId };
+    pendingNativeMounts.set(outer, token);
+    let syntheticFooter = null;
+    try {
+        const channelId = await resolveDMChannelId(userId);
+        if (!channelId || !pluginRunning || !outer.isConnected || pendingNativeMounts.get(outer) !== token) return false;
+        if (nativeFooter && !nativeFooter.isConnected) return false;
+        if (!nativeFooter) {
+            syntheticFooter = createSyntheticNativeFooter(outer);
+            nativeFooter = syntheticFooter;
+        }
+        if (!nativeFooter?.isConnected) return false;
+
+        const user = getStore('UserStore', 'getCurrentUser')?.getUser?.(userId);
+        const username = user?.username || user?.globalName || usernameHint || 'user';
+        const attributes = new Map(['data-qw-managed', 'data-qw-position-layer', 'data-qw-chat-side'].map(name => [name, outer.getAttribute(name)]));
+        outer.dataset.qwManaged = 'true';
+        outer.dataset.qwPositionLayer = 'true';
+        setNativeProfileLayoutMode(outer, 'split');
+        positionProfilePopout(outer, sessionStack.length);
+        acknowledgeDirectMessageForUser(userId, channelId);
+        const shouldActivateWhenReady = !focusedProfileRequest || focusedProfileRequest === userId;
+        const session = new WhisperSession(nativeFooter, userId, channelId, username, owned.context?.guildId);
+        const onPointerActivate = event => {
+            // Switch ownership before the browser resolves focus so a pending
+            // request from another profile cannot pull the caret away.
+            activateProfile(userId, false);
+            const input = event.target?.closest?.('.qw-input');
+            if (input && session.ui?.contains(input) && document.activeElement !== input) input.focus({ preventScroll: true });
+        };
+        const onFocusActivate = () => activateProfile(userId, false);
+        activeSessions.set(userId, {
+            userId,
+            outer,
+            session,
+            syntheticFooter,
+            attributes,
+            nativeClose: getNativePopoutClose(outer),
+            onPointerActivate,
+            onFocusActivate
+        });
+        sessionStack.push(userId);
+        outer.addEventListener('pointerdown', onPointerActivate, true);
+        outer.addEventListener('focusin', onFocusActivate, true);
+        attachDraggables(outer);
+        attachFloatingGear(outer);
+        attachTopCloseBtn(outer, userId);
+        if (shouldActivateWhenReady) activateProfile(userId, true);
+        else bringToFront(userId);
+        return true;
+    } catch (err) {
+        syntheticFooter?.remove();
+        setNativeProfileLayoutMode(outer, 'native');
+        console.error('[MBDM] Native profile mount failed:', err);
+        return false;
+    } finally {
+        if (pendingNativeMounts.get(outer) === token) pendingNativeMounts.delete(outer);
+    }
+}
+
+function maybeMountOwnedProfileChat(record) {
+    const outer = record?.outer;
+    const userId = String(record?.userId || '');
+    if (!outer?.isConnected || !userId || pendingNativeMounts.has(outer) || activeSessions.has(userId)) return;
+    const RelationshipStore = getStore('RelationshipStore', 'isBlocked', 'isFriend');
+    if (RelationshipStore?.isBlocked?.(userId)) return;
+    const textbox = getOwnedProfileTextbox(outer);
+    if (textbox) {
+        if (nativeChatProbeAttempts.get(outer) === 'textbox') return;
+        nativeChatProbeAttempts.set(outer, 'textbox');
+        inspectNativeTextbox(textbox).catch(err => console.error('[MBDM] Profile textbox inspection failed:', err));
+        return;
+    }
+    const { surface } = getNativeProfileParts(outer);
+    const messageAction = findNativeChatAction(surface, 'message');
+    const channelId = getStore('ChannelStore', 'getDMFromUserId')?.getDMFromUserId?.(userId);
+    const existingFriendChannel = channelId && RelationshipStore?.isFriend?.(userId);
+    if (!messageAction && !existingFriendChannel) return;
+    const signal = messageAction ? 'message-action' : 'existing-channel';
+    if (nativeChatProbeAttempts.get(outer) === signal) return;
+    nativeChatProbeAttempts.set(outer, signal);
+    const label = messageAction?.getAttribute('aria-label') || messageAction?.getAttribute('title') || '';
+    mountOwnedProfileChat(outer, userId, null, label.replace(/^message\s+@?/i, '').trim())
+        .catch(err => console.error('[MBDM] Message action mount failed:', err));
+}
+
 async function inspectNativeTextbox(textbox) {
     if (!pluginRunning || !textbox?.isConnected || textbox._qwInspecting) return false;
     const nativeFooter = textbox.closest('[class*="footer_"], [class*="channelTextArea_"]') || textbox.parentElement;
@@ -4633,51 +5350,11 @@ async function inspectNativeTextbox(textbox) {
         return false;
     }
     owned.outer = outer;
-    if (pendingNativeMounts.has(outer)) return false;
-    const existing = activeSessions.get(userId);
-    if (existing?.outer === outer && existing.session.ui?.isConnected) return true;
-    if (existing) cleanupNativeSession(userId);
-    const token = { userId };
-    pendingNativeMounts.set(outer, token);
     textbox._qwInspecting = true;
     try {
-        const channelId = await resolveDMChannelId(userId);
-        if (!channelId || !pluginRunning || !outer.isConnected || !nativeFooter.isConnected || pendingNativeMounts.get(outer) !== token) return false;
         const label = textbox.getAttribute("aria-label") || "";
-        const user = getStore("UserStore", "getCurrentUser")?.getUser?.(userId);
-        const username = user?.username || label.match(/Message @(.+)/i)?.[1] || "user";
-        const attributes = new Map(["data-qw-managed", "data-qw-position-layer", "data-qw-chat-side"].map(name => [name, outer.getAttribute(name)]));
-        outer.dataset.qwManaged = "true";
-        outer.dataset.qwPositionLayer = "true";
-        positionProfilePopout(outer, sessionStack.length);
-        acknowledgeDirectMessageForUser(userId, channelId);
-        const shouldActivateWhenReady = !focusedProfileRequest || focusedProfileRequest === String(userId);
-        const session = new WhisperSession(nativeFooter, userId, channelId, username, owned.context?.guildId);
-        const onPointerActivate = event => {
-            // Switch ownership before the browser resolves focus so a pending
-            // request from another profile cannot pull the caret away.
-            activateProfile(userId, false);
-            const input = event.target?.closest?.(".qw-input");
-            if (input && session.ui?.contains(input) && document.activeElement !== input) {
-                input.focus({ preventScroll: true });
-            }
-        };
-        const onFocusActivate = () => activateProfile(userId, false);
-        activeSessions.set(userId, { userId, outer, session, attributes, nativeClose: getNativePopoutClose(outer), onPointerActivate, onFocusActivate });
-        sessionStack.push(userId);
-        outer.addEventListener("pointerdown", onPointerActivate, true);
-        outer.addEventListener("focusin", onFocusActivate, true);
-        attachDraggables(outer);
-        attachFloatingGear(outer);
-        attachTopCloseBtn(outer, userId);
-        if (shouldActivateWhenReady) activateProfile(userId, true);
-        else bringToFront(userId);
-        return true;
-    } catch (err) {
-        console.error("[MBDM] Native profile mount failed:", err);
-        return false;
+        return await mountOwnedProfileChat(outer, userId, nativeFooter, label.match(/Message @(.+)/i)?.[1] || '');
     } finally {
-        if (pendingNativeMounts.get(outer) === token) pendingNativeMounts.delete(outer);
         textbox._qwInspecting = false;
     }
 }
@@ -4689,6 +5366,8 @@ function scan() {
     const candidates = document.querySelectorAll('div[id^="popout_"], [role="dialog"][class*="userProfile"], [class*="userPopoutOuter"]');
     for (const record of ownedNativeProfiles.values()) {
         if (!record.outer?.isConnected) {
+            const staleOuter = record.outer;
+            if (staleOuter) clearNativeProfileLayout(staleOuter);
             record.outer = [...candidates].find(candidate => !candidate.querySelector('[role="menu"]') && isOwnedNativeProfile(candidate, record)) || null;
         }
         if (!record.outer) continue;
@@ -4699,7 +5378,11 @@ function scan() {
             record.initializedOuter = record.outer;
         }
         attachTopCloseBtn(record.outer, record.userId);
+        attachFloatingGear(record.outer);
+        layoutProfileTopControls(record.outer);
         attachDraggables(record.outer);
+        scheduleNativeProfileEffects(record.outer);
+        maybeMountOwnedProfileChat(record);
     }
     for (const [handle, binding] of draggableHandles) {
         if (handle.isConnected) continue;
@@ -4724,6 +5407,11 @@ function scan() {
         attachDraggables(data.outer);
         attachFloatingGear(data.outer);
         attachTopCloseBtn(data.outer, uid);
+        layoutProfileTopControls(data.outer);
+        scheduleNativeProfileEffects(data.outer);
+    }
+    for (const outer of [...nativeProfileEffectLayouts.keys()]) {
+        if (!outer.isConnected) destroyNativeProfileEffectLayout(outer);
     }
     for (const tb of document.querySelectorAll('[role="textbox"], textarea')) {
         if (tb.closest('main, [class*="chatContent_"], .qw-root, [role="menu"], [class*="note_"], [class*="userInfoSection_"], [class*="userBio_"], [class*="customStatus_"]')) continue;
@@ -4733,6 +5421,7 @@ function scan() {
             tb.closest('[class*="channelTextArea_"], [class*="footer_"]');
         if (!isMessage || !tb.closest('[role="dialog"], [id^="popout_"], [class*="userProfile"]')) continue;
         const outer = getPopoutOuter(tb);
+        if ([...ownedNativeProfiles.values()].some(record => record.outer === outer)) continue;
         if (outer.querySelector(".qw-root") || pendingNativeMounts.has(outer)) continue;
         inspectNativeTextbox(tb).catch(err => console.error("[MBDM] Profile inspection failed:", err));
     }
@@ -4790,6 +5479,7 @@ const plugin = _definePlugin({
         }
         for (const userId of [...activeSessions.keys()]) cleanupNativeSession(userId);
         for (const userId of [...ownedNativeProfiles.keys()]) destroyOwnedNativeProfile(userId);
+        for (const outer of new Set([...nativeProfileLayoutModes.keys(), ...nativeSplitStyleOwners.keys()])) clearNativeProfileLayout(outer);
 
         sessionStack.length = 0;
         if (activeDragCleanup) {
@@ -4806,6 +5496,9 @@ const plugin = _definePlugin({
         if (activeLightboxCleanup) activeLightboxCleanup();
         document.querySelectorAll(".qw-floating-gear-btn").forEach(el => el.remove());
         document.querySelectorAll(".qw-top-close-btn").forEach(el => el.remove());
+        for (const outer of [...nativeProfileEffectLayouts.keys()]) destroyNativeProfileEffectLayout(outer);
+        document.querySelectorAll('[data-qw-profile-effect-backdrop="true"]').forEach(el => el.remove());
+        document.querySelectorAll('.qw-native-chat-anchor').forEach(el => el.remove());
         const fs = document.getElementById("qw-floating-settings");
         if (fs) fs.remove();
         const lb = document.getElementById("qw-lightbox");
