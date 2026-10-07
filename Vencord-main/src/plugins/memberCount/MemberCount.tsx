@@ -15,7 +15,7 @@ import { VoiceIcon } from "./VoiceIcon";
 
 export function MemberCount({ isTooltip, tooltipGuildId }: { isTooltip?: true; tooltipGuildId?: string; }) {
     const { voiceActivity } = settings.use(["voiceActivity"]);
-    const includeVoice = voiceActivity && !isTooltip;
+    const includeVoice = voiceActivity;
 
     const currentChannel = useStateFromStores(
         [SelectedChannelStore], () => isTooltip ? undefined : getCurrentChannel(),

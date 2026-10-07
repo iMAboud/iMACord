@@ -49,6 +49,18 @@ export { PlainSettings, Settings };
     Settings
 };
 
+if (typeof window !== "undefined") {
+    window.addEventListener("error", event => {
+        if (
+            event.message?.includes("Attempting to use a disconnected port object") ||
+            (event.filename && (event.filename.includes("proxy.js") || event.filename.includes("bridge.js")))
+        ) {
+            event.stopImmediatePropagation();
+            event.preventDefault();
+        }
+    }, true);
+}
+
 import { coreStyleRootNode, initStyles } from "@api/Styles";
 import { openSettingsTabModal, UpdaterTab } from "@components/settings";
 import { debounce } from "@shared/debounce";
