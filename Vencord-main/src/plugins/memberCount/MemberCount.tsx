@@ -108,38 +108,9 @@ export function MemberCount({ isTooltip, tooltipGuildId }: { isTooltip?: true; t
     const formattedOnlineCount = onlineCount != null ? numberFormat(onlineCount) : "?";
 
     return (
-        <div className={cl("widget", { tooltip: isTooltip, "member-list": !isTooltip })}>
-            <Tooltip text={`${formattedOnlineCount} online in this channel`} position="bottom">
-                {props => (
-                    <div {...props} className={cl("container")}>
-                        <CircleIcon className={cl("online-count")} />
-                        <span className={cl("online")}>{formattedOnlineCount}</span>
-                    </div>
-                )}
-            </Tooltip>
-
-            <Tooltip text={`${numberFormat(totalCount)} total server members`} position="bottom">
-                {props => (
-                    <div {...props} className={cl("container")}>
-                        <CircleIcon className={cl("total-count")} />
-                        <span className={cl("total")}>{numberFormat(totalCount)}</span>
-                    </div>
-                )}
-            </Tooltip>
-
-            {includeVoice && voiceActivityCount > 0 &&
-                <Tooltip text={`${formattedVoiceCount} members in voice`} position="bottom">
-                    {props => (
-                        <div {...props} className={cl("container")}>
-                            <VoiceIcon className={cl("voice-icon")} />
-                            <span className={cl("voice")}>{formattedVoiceCount}</span>
-                        </div>
-                    )}
-                </Tooltip>
-            }
-
+        <div className={cl("widget", { tooltip: isTooltip, "member-list": !isTooltip })} style={isTooltip ? { flexDirection: "column", alignItems: "flex-start", gap: "0.4em" } : undefined}>
             {isTooltip && voiceUsers.length > 0 && (
-                <div style={{ marginTop: "6px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <div style={{ display: "flex", alignItems: "center", marginBottom: "2px" }}>
                     <UserSummaryItem
                         users={voiceUsers}
                         max={10}
@@ -148,6 +119,37 @@ export function MemberCount({ isTooltip, tooltipGuildId }: { isTooltip?: true; t
                     />
                 </div>
             )}
+
+            <div style={{ display: "flex", alignItems: "center", gap: "0.85em" }}>
+                <Tooltip text={`${formattedOnlineCount} online in this channel`} position="bottom">
+                    {props => (
+                        <div {...props} className={cl("container")}>
+                            <CircleIcon className={cl("online-count")} />
+                            <span className={cl("online")}>{formattedOnlineCount}</span>
+                        </div>
+                    )}
+                </Tooltip>
+
+                <Tooltip text={`${numberFormat(totalCount)} total server members`} position="bottom">
+                    {props => (
+                        <div {...props} className={cl("container")}>
+                            <CircleIcon className={cl("total-count")} />
+                            <span className={cl("total")}>{numberFormat(totalCount)}</span>
+                        </div>
+                    )}
+                </Tooltip>
+
+                {includeVoice && voiceActivityCount > 0 &&
+                    <Tooltip text={`${formattedVoiceCount} members in voice`} position="bottom">
+                        {props => (
+                            <div {...props} className={cl("container")}>
+                                <VoiceIcon className={cl("voice-icon")} />
+                                <span className={cl("voice")}>{formattedVoiceCount}</span>
+                            </div>
+                        )}
+                    </Tooltip>
+                }
+            </div>
         </div>
     );
 }
