@@ -117,12 +117,12 @@ async function fetchUpdates(): Promise<boolean> {
     let manifest: UpdaterManifest | null = null;
     const cacheBuster = `?t=${Date.now()}`;
     try {
-        manifest = await fetchJson<UpdaterManifest>(`${RAW_BASE}/userplugins/manifest.json${cacheBuster}`, REQUEST_INIT);
+        manifest = await fetchJson<UpdaterManifest>(`${RELEASE_BASE}/manifest.json${cacheBuster}`, REQUEST_INIT);
     } catch {
         try {
-            manifest = await fetchJson<UpdaterManifest>(`${RELEASE_BASE}/manifest.json${cacheBuster}`, REQUEST_INIT);
+            manifest = await fetchJson<UpdaterManifest>(`${RAW_BASE}/userplugins/manifest.json${cacheBuster}`, REQUEST_INIT);
         } catch (e) {
-            console.warn("[iMCord Updater] Could not fetch manifest from raw or release fallback:", e);
+            console.warn("[iMCord Updater] Could not fetch manifest from release or raw fallback:", e);
             return false;
         }
     }
@@ -243,9 +243,9 @@ async function applyUpdates(): Promise<boolean> {
             try {
                 contents = await fetchBuffer(primaryUrl, REQUEST_INIT);
             } catch {
-                const fallbackUrl = item.filename.endsWith(".js")
+                const fallbackUrl = item.filename.endsWith(".js") && !VENCORD_FILES.includes(item.filename.replace(" (dist)", ""))
                     ? `${RAW_BASE}/userplugins/${encodeURIComponent(item.filename)}?t=${Date.now()}`
-                    : `${RAW_BASE}/Vencord-main/dist/${encodeURIComponent(item.filename.replace(" (dist)", ""))}?t=${Date.now()}`;
+                    : `${RELEASE_BASE}/${encodeURIComponent(item.filename.replace(" (dist)", ""))}?t=${Date.now()}`;
                 contents = await fetchBuffer(fallbackUrl, REQUEST_INIT);
             }
 
