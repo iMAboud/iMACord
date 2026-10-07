@@ -83,12 +83,39 @@ export default definePlugin({
 
     startAt: StartAt.Init,
     start() {
+        const sentryStub: any = new Proxy(() => {}, {
+            get(target, prop) {
+                if (prop === "getCurrentHub" || prop === "getClient" || prop === "getScope" || prop === "getIsolationScope") {
+                    return () => sentryStub;
+                }
+                return sentryStub;
+            },
+            apply() {
+                return sentryStub;
+            }
+        });
+
+        const disableSentry = () => {
+            Reflect.deleteProperty(Function.prototype, "d");
+            try {
+                Object.defineProperty(window, "DiscordSentry", {
+                    configurable: true,
+                    enumerable: true,
+                    get: () => sentryStub,
+                    set: () => {}
+                });
+            } catch {
+                Reflect.deleteProperty(window, "DiscordSentry");
+            }
+        };
+
+        disableSentry();
+
         // Sentry is initialized in its own WebpackInstance.
         // It has everything it needs preloaded, so, it doesn't include any chunk loading functionality.
         // Because of that, its WebpackInstance doesnt export wreq.m or wreq.c
 
-        // To circuvent this and disable Sentry we are gonna hook when wreq.d of its WebpackInstance is set.
-        // When that happens we are gonna forcefully throw an error and abort everything.
+        // To circumvent this and disable Sentry we hook when wreq.d of its WebpackInstance is set.
         Object.defineProperty(Function.prototype, "d", {
             configurable: true,
 
@@ -122,23 +149,9 @@ export default definePlugin({
                     return;
                 }
 
-                new Logger("NoTrack", "#8caaee").info("Disabling Sentry by erroring its WebpackInstance");
+                new Logger("NoTrack", "#8caaee").info("Disabling Sentry safely without throwing");
 
-                Reflect.deleteProperty(Function.prototype, "d");
-                Reflect.deleteProperty(window, "DiscordSentry");
-
-                throw new Error("Sentry successfully disabled");
-            }
-        });
-
-        Object.defineProperty(window, "DiscordSentry", {
-            configurable: true,
-
-            set() {
-                new Logger("NoTrack", "#8caaee").error("Failed to disable Sentry. Falling back to deleting window.DiscordSentry");
-
-                Reflect.deleteProperty(Function.prototype, "d");
-                Reflect.deleteProperty(window, "DiscordSentry");
+                disableSentry();
             }
         });
     },
