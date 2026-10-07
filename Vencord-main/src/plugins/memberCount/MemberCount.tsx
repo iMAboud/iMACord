@@ -6,7 +6,7 @@
 
 import { getCurrentChannel } from "@utils/discord";
 import { isObjectEmpty } from "@utils/misc";
-import { ChannelStore, GuildMemberCountStore, PermissionsBits, PermissionStore, SelectedChannelStore, Tooltip, useEffect, useStateFromStores, VoiceStateStore } from "@webpack/common";
+import { ChannelStore, GuildMemberCountStore, PermissionsBits, PermissionStore, SelectedChannelStore, Tooltip, useEffect, UserStore, UserSummaryItem, useStateFromStores, VoiceStateStore } from "@webpack/common";
 
 import { ChannelMemberStore, cl, numberFormat, settings, ThreadMemberListStore } from ".";
 import { CircleIcon } from "./CircleIcon";
@@ -24,13 +24,13 @@ export function MemberCount({ isTooltip, tooltipGuildId }: { isTooltip?: true; t
 
     const guildId = tooltipGuildId ?? currentChannel?.guild_id;
 
-    const voiceActivityCount = useStateFromStores(
-        [VoiceStateStore],
+    const voiceUsers = useStateFromStores(
+        [VoiceStateStore, UserStore],
         () => {
-            if (!includeVoice || !guildId) return 0;
+            if (!includeVoice || !guildId) return [];
 
             const voiceStates = VoiceStateStore.getVoiceStates(guildId);
-            if (!voiceStates) return 0;
+            if (!voiceStates) return [];
 
             return Object.values(voiceStates)
                 .filter(({ channelId }) => {
@@ -39,9 +39,12 @@ export function MemberCount({ isTooltip, tooltipGuildId }: { isTooltip?: true; t
                     const channel = ChannelStore.getChannel(channelId);
                     return channel && PermissionStore.can(PermissionsBits.VIEW_CHANNEL, channel);
                 })
-                .length;
+                .map(({ userId }) => UserStore.getUser(userId))
+                .filter((u): u is NonNullable<typeof u> => u != null);
         }
     );
+
+    const voiceActivityCount = voiceUsers.length;
 
     const totalCount = useStateFromStores(
         [GuildMemberCountStore],
@@ -134,6 +137,17 @@ export function MemberCount({ isTooltip, tooltipGuildId }: { isTooltip?: true; t
                     )}
                 </Tooltip>
             }
+
+            {isTooltip && voiceUsers.length > 0 && (
+                <div style={{ marginTop: "6px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <UserSummaryItem
+                        users={voiceUsers}
+                        max={10}
+                        size={20}
+                        renderIcon={false}
+                    />
+                </div>
+            )}
         </div>
     );
 }
