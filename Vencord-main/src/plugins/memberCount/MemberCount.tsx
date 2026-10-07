@@ -6,7 +6,7 @@
 
 import { getCurrentChannel } from "@utils/discord";
 import { isObjectEmpty } from "@utils/misc";
-import { ChannelStore, GuildMemberCountStore, PermissionsBits, PermissionStore, SelectedChannelStore, Tooltip, useEffect, useStateFromStores, VoiceStateStore } from "@webpack/common";
+import { ChannelStore, GuildMemberCountStore, PermissionsBits, PermissionStore, SelectedChannelStore, Tooltip, useEffect, UserStore, UserSummaryItem, useStateFromStores, VoiceStateStore } from "@webpack/common";
 
 import { ChannelMemberStore, cl, numberFormat, settings, ThreadMemberListStore } from ".";
 import { CircleIcon } from "./CircleIcon";
@@ -24,13 +24,13 @@ export function MemberCount({ isTooltip, tooltipGuildId }: { isTooltip?: true; t
 
     const guildId = tooltipGuildId ?? currentChannel?.guild_id;
 
-    const voiceActivityCount = useStateFromStores(
-        [VoiceStateStore],
+    const voiceUsers = useStateFromStores(
+        [VoiceStateStore, UserStore],
         () => {
-            if (!includeVoice || !guildId) return 0;
+            if (!includeVoice || !guildId) return [];
 
             const voiceStates = VoiceStateStore.getVoiceStates(guildId);
-            if (!voiceStates) return 0;
+            if (!voiceStates) return [];
 
             return Object.values(voiceStates)
                 .filter(({ channelId }) => {
@@ -39,9 +39,12 @@ export function MemberCount({ isTooltip, tooltipGuildId }: { isTooltip?: true; t
                     const channel = ChannelStore.getChannel(channelId);
                     return channel && PermissionStore.can(PermissionsBits.VIEW_CHANNEL, channel);
                 })
-                .length;
+                .map(({ userId }) => UserStore.getUser(userId))
+                .filter((u): u is NonNullable<typeof u> => u != null);
         }
     );
+
+    const voiceActivityCount = voiceUsers.length;
 
     const totalCount = useStateFromStores(
         [GuildMemberCountStore],
@@ -105,35 +108,48 @@ export function MemberCount({ isTooltip, tooltipGuildId }: { isTooltip?: true; t
     const formattedOnlineCount = onlineCount != null ? numberFormat(onlineCount) : "?";
 
     return (
-        <div className={cl("widget", { tooltip: isTooltip, "member-list": !isTooltip })}>
-            <Tooltip text={`${formattedOnlineCount} online in this channel`} position="bottom">
-                {props => (
-                    <div {...props} className={cl("container")}>
-                        <CircleIcon className={cl("online-count")} />
-                        <span className={cl("online")}>{formattedOnlineCount}</span>
-                    </div>
-                )}
-            </Tooltip>
+        <div className={cl("widget", { tooltip: isTooltip, "member-list": !isTooltip })} style={isTooltip ? { flexDirection: "column", alignItems: "flex-start", gap: "0.4em" } : undefined}>
+            {isTooltip && voiceUsers.length > 0 && (
+                <div style={{ display: "flex", alignItems: "center", marginBottom: "2px" }}>
+                    <UserSummaryItem
+                        users={voiceUsers}
+                        max={10}
+                        size={20}
+                        renderIcon={false}
+                    />
+                </div>
+            )}
 
-            <Tooltip text={`${numberFormat(totalCount)} total server members`} position="bottom">
-                {props => (
-                    <div {...props} className={cl("container")}>
-                        <CircleIcon className={cl("total-count")} />
-                        <span className={cl("total")}>{numberFormat(totalCount)}</span>
-                    </div>
-                )}
-            </Tooltip>
-
-            {includeVoice && voiceActivityCount > 0 &&
-                <Tooltip text={`${formattedVoiceCount} members in voice`} position="bottom">
+            <div style={{ display: "flex", alignItems: "center", gap: "0.85em" }}>
+                <Tooltip text={`${formattedOnlineCount} online in this channel`} position="bottom">
                     {props => (
                         <div {...props} className={cl("container")}>
-                            <VoiceIcon className={cl("voice-icon")} />
-                            <span className={cl("voice")}>{formattedVoiceCount}</span>
+                            <CircleIcon className={cl("online-count")} />
+                            <span className={cl("online")}>{formattedOnlineCount}</span>
                         </div>
                     )}
                 </Tooltip>
-            }
+
+                <Tooltip text={`${numberFormat(totalCount)} total server members`} position="bottom">
+                    {props => (
+                        <div {...props} className={cl("container")}>
+                            <CircleIcon className={cl("total-count")} />
+                            <span className={cl("total")}>{numberFormat(totalCount)}</span>
+                        </div>
+                    )}
+                </Tooltip>
+
+                {includeVoice && voiceActivityCount > 0 &&
+                    <Tooltip text={`${formattedVoiceCount} members in voice`} position="bottom">
+                        {props => (
+                            <div {...props} className={cl("container")}>
+                                <VoiceIcon className={cl("voice-icon")} />
+                                <span className={cl("voice")}>{formattedVoiceCount}</span>
+                            </div>
+                        )}
+                    </Tooltip>
+                }
+            </div>
         </div>
     );
 }
