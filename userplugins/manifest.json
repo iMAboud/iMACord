@@ -1,26 +1,26 @@
 {
-  "version": "v1.0.34",
-  "updatedAt": "2026-10-07T15:53:22.956Z",
+  "version": "v1.0.35",
+  "updatedAt": "2026-10-07T16:00:49.966Z",
   "dist": {
     "renderer.js": {
-      "hash": "66cabde02a795422d28a70a7799f64e2519601fbb4df78599894f7e87cd385d6",
+      "hash": "9ffd52e715500ff89fc1f1bacb944a8117c2ed2ec7f4826c28a6f84f0bf1215f",
       "size": 2679310,
-      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.34/renderer.js"
+      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.35/renderer.js"
     },
     "renderer.css": {
       "hash": "20567561763c6b29c615de1a2b857b749799682e34c6233242576bb31171d8ce",
       "size": 48994,
-      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.34/renderer.css"
+      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.35/renderer.css"
     },
     "patcher.js": {
-      "hash": "8dc2fe8bfe757966d1d227921177c342c6586a072aa02db5708a2c9e65aed967",
+      "hash": "0ca7ccc66309512ab5d65586556598e885efd31eb29a98570c9fed583e6b5cba",
       "size": 44279,
-      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.34/patcher.js"
+      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.35/patcher.js"
     },
     "preload.js": {
-      "hash": "522c7655b9f346b6b9c47b015c4d1505a0a398053f12394cece1880d8ebc72d0",
+      "hash": "56cba72bf7d78996584d27fe4c421ee210acb85a880e88ef2e8a0327eb9768c0",
       "size": 2593,
-      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.34/preload.js"
+      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.35/preload.js"
     }
   },
   "plugins": {
@@ -30,7 +30,7 @@
       "author": "iiMBdr",
       "commit": "a7831b5",
       "message": "Add files via upload",
-      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.34/CustomFont.js"
+      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.35/CustomFont.js"
     },
     "iMAMenu.js": {
       "hash": "f6bb19a9085b0b41c091e0dbdc478c8e408063694d64b216089bf6393c836020",
@@ -38,7 +38,7 @@
       "author": "iMAboud",
       "commit": "3dba2f5",
       "message": "feat: add iMAboud author profile support and updater cache-busting",
-      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.34/iMAMenu.js"
+      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.35/iMAMenu.js"
     },
     "MBdm.js": {
       "hash": "660ec38bdf898c826f700c7960ac60bd9581137e33c911306b744b248edb52bb",
@@ -46,7 +46,7 @@
       "author": "iiMBdr",
       "commit": "bb18384",
       "message": "Update MBdm.js",
-      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.34/MBdm.js"
+      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.35/MBdm.js"
     },
     "MultiStreamPopout.js": {
       "hash": "478e0dfe5f829954d1f75f6ebd441c8d2a94a9e1c99050bcba9132be2f698df6",
@@ -54,7 +54,7 @@
       "author": "iMAboud",
       "commit": "36c767f",
       "message": "feat: restrict default plugin auto-enablement to whitelist",
-      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.34/MultiStreamPopout.js"
+      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.35/MultiStreamPopout.js"
     },
     "VoiceReconnect.js": {
       "hash": "cb0d4f400c29e9ce1295f260c6b185a7c01c3a673142bb5ada1544d35fc53b26",
@@ -62,7 +62,7 @@
       "author": "F2isalq",
       "commit": "222cac7",
       "message": "Update VoiceReconnect.js",
-      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.34/VoiceReconnect.js"
+      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.35/VoiceReconnect.js"
     }
   },
   "removedPlugins": [
