@@ -50,7 +50,7 @@ export const settings = definePluginSettings({
     },
     voiceActivity: {
         type: OptionType.BOOLEAN,
-        description: "Show voice activity with member count in the member list",
+        description: "Show voice activity with member count in the member list and server tooltip",
         default: true
     }
 });
