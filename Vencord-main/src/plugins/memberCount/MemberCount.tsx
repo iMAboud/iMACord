@@ -41,7 +41,10 @@ export function MemberCount({ isTooltip, tooltipGuildId }: { isTooltip?: true; t
                 })
                 .map(({ userId }) => UserStore.getUser(userId))
                 .filter((u): u is NonNullable<typeof u> => u != null);
-        }
+        },
+        [includeVoice, guildId],
+        // the mapper builds a new array on every call, so compare by content to avoid pointless re-renders
+        (a, b) => a.length === b.length && a.every((user, i) => user.id === b[i].id)
     );
 
     const voiceActivityCount = voiceUsers.length;
@@ -101,7 +104,10 @@ export function MemberCount({ isTooltip, tooltipGuildId }: { isTooltip?: true; t
         }
     }, [guildId]);
 
-    if (totalCount == null)
+    // The member count may be unknown (e.g. server not loaded yet). That must not hide the voice
+    // users in the server tooltip, so only bail out when there is nothing at all to show.
+    const showVoiceUsers = isTooltip && voiceUsers.length > 0;
+    if (totalCount == null && !showVoiceUsers)
         return null;
 
     const formattedVoiceCount = numberFormat(voiceActivityCount ?? 0);
@@ -109,7 +115,7 @@ export function MemberCount({ isTooltip, tooltipGuildId }: { isTooltip?: true; t
 
     return (
         <div className={cl("widget", { tooltip: isTooltip, "member-list": !isTooltip })} style={isTooltip ? { flexDirection: "column", alignItems: "flex-start", gap: "0.4em" } : undefined}>
-            {isTooltip && voiceUsers.length > 0 && (
+            {showVoiceUsers && (
                 <div style={{ display: "flex", alignItems: "center", marginBottom: "2px" }}>
                     <UserSummaryItem
                         users={voiceUsers}
@@ -120,7 +126,7 @@ export function MemberCount({ isTooltip, tooltipGuildId }: { isTooltip?: true; t
                 </div>
             )}
 
-            <div style={{ display: "flex", alignItems: "center", gap: "0.85em" }}>
+            {totalCount != null && <div style={{ display: "flex", alignItems: "center", gap: "0.85em" }}>
                 <Tooltip text={`${formattedOnlineCount} online in this channel`} position="bottom">
                     {props => (
                         <div {...props} className={cl("container")}>
@@ -149,7 +155,7 @@ export function MemberCount({ isTooltip, tooltipGuildId }: { isTooltip?: true; t
                         )}
                     </Tooltip>
                 }
-            </div>
+            </div>}
         </div>
     );
 }
