@@ -28,6 +28,8 @@ const conversationRoleStoreCleanups = [];
 const routedVoiceUnreads = new Map();
 const pendingVoiceUnreadAcks = new Map();
 const VOICE_UNREAD_ACK_GRACE_MS = 2000;
+let lastMiddleClickTimestamp = 0;
+let lastMiddleClickUserId = null;
 
 function getReactRuntime() {
     const common = window.Vencord?.Webpack?.Common || {};
@@ -79,20 +81,20 @@ function resolveNativeProfileDescriptor() {
     if (nativeProfileDescriptor) return nativeProfileDescriptor;
     const wp = window.Vencord?.Webpack;
     try {
-            const Summary = wp?.find?.(type => typeof type === "function" && typeof type.prototype?.renderUsers === "function" && typeof type.prototype?.renderMoreUsers === "function" && typeof type.prototype?.renderIcon === "function");
-            const user = getStore("UserStore", "getCurrentUser")?.getCurrentUser?.();
-            if (Summary && user) {
-                const summary = new Summary({ users: [user], showUserPopout: true, useFallbackUserForPopout: true, size: 24 });
-                summary.state = { ...summary.state, popoutUserId: user.id };
-                const element = summary.render();
-                if (element?.type && typeof element.type !== "string") nativeProfileDescriptor = { type: element.type, props: {}, providers: [], controlledPopout: true };
-            }
-    } catch (err) {}
+        const Summary = wp?.find?.(type => typeof type === "function" && typeof type.prototype?.renderUsers === "function" && typeof type.prototype?.renderMoreUsers === "function" && typeof type.prototype?.renderIcon === "function");
+        const user = getStore("UserStore", "getCurrentUser")?.getCurrentUser?.();
+        if (Summary && user) {
+            const summary = new Summary({ users: [user], showUserPopout: true, useFallbackUserForPopout: true, size: 24 });
+            summary.state = { ...summary.state, popoutUserId: user.id };
+            const element = summary.render();
+            if (element?.type && typeof element.type !== "string") nativeProfileDescriptor = { type: element.type, props: {}, providers: [], controlledPopout: true };
+        }
+    } catch (err) { }
     if (!nativeProfileDescriptor) {
         try {
             const type = wp?.findComponentByCode?.(".getCurrentUser()", ".getUser(", "userId:", "children:");
             if (type) nativeProfileDescriptor = { type, props: {}, providers: [], controlledPopout: true };
-        } catch (err) {}
+        } catch (err) { }
     }
     return nativeProfileDescriptor;
 }
@@ -164,7 +166,7 @@ function openNativeProfile(userId, options = {}, descriptor = resolveNativeProfi
     const record = { userId, host, root: runtime.createRoot(host), descriptor, outer: null, context: null };
     ownedNativeProfiles.set(userId, record);
     const anchorRef = { current: null };
-    const noop = () => {};
+    const noop = () => { };
     const context = resolveNativeProfileContext(options.anchor, descriptor, options);
     record.context = context;
     const props = {
@@ -283,21 +285,21 @@ function setNativeAttribute(owner, element, name, value) {
 const _definePlugin = typeof definePlugin === "function" ? definePlugin : (window.Vencord?.Plugins?.definePlugin || (p => p));
 
 const STORAGE_KEY = "MBDM_persistent_config";
-const DEFAULT_CONFIG = { profileWidth: 260, chatWidth: 420, profileHeight: 570, fontSize: 14, showHeaders: false };
-const CONFIG_KEYS = ["myColor", "theirColor", "profileWidth", "chatWidth", "profileHeight", "fontSize", "showHeaders", "lastPosition", "nativeSplitLayoutVersion", "configUpdatedAt"];
+const DEFAULT_CONFIG = { profileWidth: 260, chatWidth: 420, chatHeight: 570, profileHeight: 570, fontSize: 14, blur: 24, darkness: 88, showHeaders: false };
+const CONFIG_KEYS = ["myColor", "theirColor", "profileWidth", "chatWidth", "chatHeight", "profileHeight", "fontSize", "blur", "darkness", "showHeaders", "lastPosition", "nativeSplitLayoutVersion", "configUpdatedAt"];
 let currentConfig = null;
 
 function getStoredConfig() {
     if (currentConfig) return currentConfig;
     let legacy = {}, saved = {};
-    try { legacy = Object.assign({}, window.Vencord?.Settings?.plugins?.MBDM || {}); } catch (e) {}
+    try { legacy = Object.assign({}, window.Vencord?.Settings?.plugins?.MBDM || {}); } catch (e) { }
     try {
         const raw = localStorage.getItem(STORAGE_KEY);
         if (raw) {
             const parsed = JSON.parse(raw);
             if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) saved = parsed;
         }
-    } catch (e) {}
+    } catch (e) { }
     currentConfig = Number(legacy.configUpdatedAt || 0) > Number(saved.configUpdatedAt || 0)
         ? Object.assign({}, saved, legacy) : Object.assign({}, legacy, saved);
     return currentConfig;
@@ -315,7 +317,7 @@ function persistStoredConfig() {
     // Preserve the plugin manager's live enabled/favorite flags when flushing
     // pending profile settings during shutdown.
     const snapshot = Object.fromEntries(CONFIG_KEYS.filter(key => Object.prototype.hasOwnProperty.call(currentConfig, key)).map(key => [key, currentConfig[key]]));
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot)); } catch (e) {}
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot)); } catch (e) { }
     try {
         const plugins = window.Vencord?.Settings?.plugins;
         if (plugins) {
@@ -324,7 +326,7 @@ function persistStoredConfig() {
                 if (plugins.MBDM[key] !== value) plugins.MBDM[key] = value;
             }
         }
-    } catch (e) {}
+    } catch (e) { }
 }
 
 function getEffectiveConfig() {
@@ -340,11 +342,31 @@ function getEffectiveConfig() {
         myColor: color(st.myColor),
         theirColor: color(st.theirColor),
         profileWidth: boundedNumber(st.profileWidth, DEFAULT_CONFIG.profileWidth, 180, 750),
-        chatWidth: boundedNumber(st.chatWidth, DEFAULT_CONFIG.chatWidth, 240, 620),
-        profileHeight: boundedNumber(st.profileHeight, DEFAULT_CONFIG.profileHeight, 320, 900),
+        chatWidth: boundedNumber(st.chatWidth, DEFAULT_CONFIG.chatWidth, 240, 800),
+        chatHeight: boundedNumber(st.chatHeight || st.profileHeight, DEFAULT_CONFIG.chatHeight, 320, 950),
+        profileHeight: boundedNumber(st.chatHeight || st.profileHeight, DEFAULT_CONFIG.chatHeight, 320, 950),
         fontSize: boundedNumber(st.fontSize, DEFAULT_CONFIG.fontSize, 11, 18),
+        blur: boundedNumber(st.blur, DEFAULT_CONFIG.blur, 0, 50),
+        darkness: boundedNumber(st.darkness, DEFAULT_CONFIG.darkness, 20, 100),
         showHeaders: st.showHeaders === true,
     };
+}
+
+function toHexColor(color, fallback = "#613f45") {
+    if (!color || typeof color !== "string") return fallback;
+    color = color.trim();
+    if (/^#[0-9a-f]{6}$/i.test(color)) return color;
+    if (/^#[0-9a-f]{3}$/i.test(color)) {
+        return "#" + color[1] + color[1] + color[2] + color[2] + color[3] + color[3];
+    }
+    const match = color.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+    if (match) {
+        const r = Math.min(255, Math.max(0, parseInt(match[1], 10))).toString(16).padStart(2, "0");
+        const g = Math.min(255, Math.max(0, parseInt(match[2], 10))).toString(16).padStart(2, "0");
+        const b = Math.min(255, Math.max(0, parseInt(match[3], 10))).toString(16).padStart(2, "0");
+        return `#${r}${g}${b}`;
+    }
+    return fallback;
 }
 
 function getContrastColor(hex) {
@@ -568,7 +590,7 @@ function removeNativeProfileEffectEntry(state, effect) {
     const entry = state.entries.get(effect);
     if (!entry) return;
     entry.observer.disconnect();
-    try { state.resizeObserver?.unobserve(effect); } catch (error) {}
+    try { state.resizeObserver?.unobserve(effect); } catch (error) { }
     entry.stage.remove();
     state.entries.delete(effect);
 }
@@ -587,10 +609,10 @@ function updateNativeProfileEffectMediaLoops(state) {
                     copy.muted = true;
                     copy.playbackRate = source.playbackRate || 1;
                     if (Number.isFinite(source.currentTime) && Math.abs(copy.currentTime - source.currentTime) > 0.12) {
-                        try { copy.currentTime = source.currentTime; } catch (error) {}
+                        try { copy.currentTime = source.currentTime; } catch (error) { }
                     }
                     if (source.paused || source.ended) copy.pause();
-                    else copy.play().catch(() => {});
+                    else copy.play().catch(() => { });
                 }
             }
         }, 250);
@@ -612,7 +634,7 @@ function updateNativeProfileEffectMediaLoops(state) {
                     try {
                         copy.getContext('2d')?.drawImage(source, 0, 0);
                         copied = true;
-                    } catch (error) {}
+                    } catch (error) { }
                 }
             }
             if (copied || [...state.entries.values()].some(entry => entry.canvasPairs.length)) {
@@ -1208,12 +1230,14 @@ function attachChatLayout(outer, ui) {
     nativeObserver.observe(parts.frame, { childList: true, attributes: true, subtree: true, attributeFilter: ['class', 'style'] });
     refresh();
     animation = requestAnimationFrame(trackPosition);
-    return { refresh, destroy() {
-        stopped = true;
-        cancelAnimationFrame(animation);
-        resizeObserver.disconnect();
-        nativeObserver.disconnect();
-    } };
+    return {
+        refresh, destroy() {
+            stopped = true;
+            cancelAnimationFrame(animation);
+            resizeObserver.disconnect();
+            nativeObserver.disconnect();
+        }
+    };
 }
 
 function positionProfilePopout(outer, index = 0) {
@@ -1257,13 +1281,21 @@ function bringToFront(userId) {
         sessionStack.push(userId);
     }
     for (let i = 0; i < sessionStack.length; i++) {
-        const record = ownedNativeProfiles.get(String(sessionStack[i]));
+        const sid = String(sessionStack[i]);
+        const record = ownedNativeProfiles.get(sid);
         // Both columns and the native decoration share this portal's stack.
         const level = 10 + i;
         if (record?.outer) setNativeStyle(record.outer, record.outer, "z-index", String(level));
-        const session = activeSessions.get(String(sessionStack[i]))?.session;
+        const activeData = activeSessions.get(sid);
+        const session = activeData?.session;
         // Chat paints above the native background inside its own portal.
-        if (session?.ui) session.ui.style.zIndex = session.ui.dataset.chatLayer || "1";
+        if (session?.ui) {
+            if (activeData.isStandalone) {
+                session.ui.style.setProperty("z-index", String(100000 + i), "important");
+            } else {
+                session.ui.style.zIndex = session.ui.dataset.chatLayer || "1";
+            }
+        }
     }
 }
 
@@ -1316,7 +1348,16 @@ function cleanupNativeSession(userId, requestClose = false) {
     if (activeDragCleanup) activeDragCleanup();
     closeFloatingSettings();
     if (activeLightboxCleanup && activeLightboxOwner === data.outer) activeLightboxCleanup();
-    try { data.session.destroy(); } catch (e) {}
+    try { data.session.destroy(); } catch (e) { }
+    if (data.isStandalone) {
+        for (const [handle, binding] of draggableHandles) {
+            if (binding.outer === data.outer) binding.cleanup();
+        }
+        data.outer.removeEventListener("pointerdown", data.onPointerActivate, true);
+        data.outer.removeEventListener("focusin", data.onFocusActivate, true);
+        data.outer.remove();
+        return;
+    }
     data.syntheticFooter?.remove();
     setNativeProfileLayoutMode(data.outer, 'native');
     for (const [handle, binding] of draggableHandles) {
@@ -1361,11 +1402,13 @@ function updateCustomStyles() {
     }
 
     el.textContent = `
-        .qw-root {
+        :root, .qw-root, #qw-floating-settings {
             --qw-my-bubble-color: ${myColor};
             --qw-their-bubble-color: ${theirColor};
             --qw-my-bubble-text: ${myTextContrast};
             --qw-their-bubble-text: ${theirTextContrast};
+            --qw-blur: ${cfg.blur}px;
+            --qw-chat-bg: rgba(20, 21, 26, ${cfg.darkness / 100});
         }
         .qw-msg-bubble { font-size: ${cfg.fontSize}px !important; }
         .qw-msg-header { display: ${cfg.showHeaders ? "flex" : "none"} !important; }
@@ -1379,6 +1422,12 @@ function updateCustomStyles() {
         .qw-msg-me .qw-reply-banner { border-bottom-color: color-mix(in srgb, var(--qw-my-bubble-text) 20%, transparent) !important; }
         .qw-msg-them .qw-reply-banner { border-bottom-color: color-mix(in srgb, var(--qw-their-bubble-text) 20%, transparent) !important; }
     `;
+    for (const data of activeSessions.values()) {
+        if (data.isStandalone && data.outer) {
+            data.outer.style.setProperty("width", `${cfg.chatWidth}px`, "important");
+            data.outer.style.setProperty("height", `${cfg.chatHeight}px`, "important");
+        }
+    }
     refreshAllConversationRoleColors();
 }
 
@@ -1562,7 +1611,7 @@ const PLUGIN_STYLES = `
 .qw-header-action:hover { background: color-mix(in srgb, var(--qw-profile-text, #fff) 10%, transparent); }
 .qw-header-action[hidden] { display: none; }
 .qw-header-action svg { width: 18px; height: 18px; fill: currentColor; }
-.qw-date-divider { display: flex; align-items: center; gap: 14px; margin: 2px 0 18px; font-size: 12px; color: var(--qw-profile-muted, #b5b6bc); }
+.qw-date-divider { display: flex; align-items: center; gap: 10px; margin: 6px 0 6px; font-size: 11px; color: var(--qw-profile-muted, #b5b6bc); }
 .qw-date-divider::before, .qw-date-divider::after { content: ""; height: 1px; background: color-mix(in srgb, var(--qw-profile-text, #fff) 10%, transparent); flex: 1; }
 .qw-chat-sidecar button:focus-visible { outline: 2px solid #b5b6bc; outline-offset: 2px; }
 .qw-root.qw-chat-sidecar { isolation: isolate; }
@@ -1593,21 +1642,20 @@ const PLUGIN_STYLES = `
     overscroll-behavior: contain;
     touch-action: pan-y;
     overflow-x: hidden;
-    padding-right: 4px;
+    padding-right: 0;
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 2px;
     overflow-anchor: none;
-    scrollbar-width: thin;
-    scrollbar-color: var(--scrollbar-auto-thumb, rgba(255, 255, 255, 0.2)) transparent;
+    scrollbar-width: none !important;
+    -ms-overflow-style: none !important;
 }
-.qw-scroller::-webkit-scrollbar { width: 5px; }
-.qw-scroller::-webkit-scrollbar-thumb { background: var(--scrollbar-auto-thumb, rgba(255, 255, 255, 0.2)); border-radius: 4px; }
-.qw-loading-banner { text-align: center; font-size: 11px; color: var(--text-muted, #949ba4); padding: 3px 0; }
-.qw-messages-container { display: flex; flex-direction: column; gap: 6px; flex-shrink: 0; }
-.qw-msg-row { display: flex; position: relative; flex-direction: column; width: 100%; }
-.qw-msg-row.qw-msg-has-header { margin-top: 7px; }
-.qw-msg-header { display: flex; position: absolute; left: 0; top: 8px; }
+.qw-scroller::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
+.qw-loading-banner { text-align: center; font-size: 11px; color: var(--text-muted, #949ba4); padding: 2px 0; }
+.qw-messages-container { display: flex; flex-direction: column; gap: 2px; flex-shrink: 0; }
+.qw-msg-row { display: flex; position: relative; flex-direction: column; width: 100%; margin: 1px 0; }
+.qw-msg-row.qw-msg-has-header { margin-top: 3px; }
+.qw-msg-header { display: flex; position: absolute; left: 0; top: 4px; }
 .qw-msg-me .qw-msg-header { visibility: hidden; }
 .qw-author-avatar { width: 34px; height: 34px; border-radius: 50%; object-fit: cover; }
 .qw-author-name { display: none; }
@@ -1651,9 +1699,9 @@ const PLUGIN_STYLES = `
 }
 .qw-msg-bubble {
     max-width: 85%;
-    padding: 7px 10px;
+    padding: 5px 9px;
     font-size: 13px;
-    line-height: 1.32;
+    line-height: 1.25;
     word-break: break-word;
     position: relative;
     unicode-bidi: plaintext;
@@ -1674,7 +1722,7 @@ const PLUGIN_STYLES = `
     box-shadow: none !important;
 }
 .qw-msg-text { unicode-bidi: plaintext; text-align: start; }
-.qw-msg-time { font-size: 9px; line-height: 1.1; opacity: 0.65; margin-top: 3px; text-align: start; }
+.qw-msg-time { font-size: 9px; line-height: 1; opacity: 0.65; margin-top: 1px; text-align: start; }
 .qw-reply-banner { display: flex; gap: 4px; font-size: 11px; padding-bottom: 3px; margin-bottom: 3px; border-bottom: 1px solid rgba(255, 255, 255, 0.12); opacity: 0.85; }
 .qw-reply-author { font-weight: 600; }
 .qw-reply-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px; }
@@ -1820,14 +1868,18 @@ const PLUGIN_STYLES = `
     font-family: inherit;
     font-size: 13px;
     resize: none;
-    max-height: 90px;
-    line-height: 1.4;
-    padding: 10px 6px;
+    max-height: 80px;
+    line-height: 1.35;
+    padding: 7px 6px;
     unicode-bidi: plaintext;
     text-align: start;
     box-sizing: border-box;
     pointer-events: auto !important;
+    overflow-y: hidden !important;
+    scrollbar-width: none !important;
+    -ms-overflow-style: none !important;
 }
+.qw-input::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
 .qw-input::placeholder { color: var(--qw-profile-muted, #949ba4); }
 .qw-composer-action-btn {
     background: transparent !important;
@@ -2068,13 +2120,13 @@ const PLUGIN_STYLES = `
     position: fixed !important;
     width: 310px !important;
     background: linear-gradient(135deg, color-mix(in srgb, var(--qw-profile-primary, #16171b) 94%, transparent), color-mix(in srgb, var(--qw-profile-secondary, #16171b) 94%, transparent)) !important;
-    backdrop-filter: blur(20px) !important;
-    -webkit-backdrop-filter: blur(20px) !important;
+    backdrop-filter: blur(var(--qw-blur, 20px)) !important;
+    -webkit-backdrop-filter: blur(var(--qw-blur, 20px)) !important;
     border: 1px solid var(--qw-settings-border, color-mix(in srgb, var(--qw-profile-text, #fff) 16%, transparent)) !important;
     border-radius: var(--qw-settings-radius, 14px) !important;
     padding: 14px 16px !important;
     box-shadow: 0 16px 48px rgba(0, 0, 0, 0.65) !important;
-    z-index: 100005 !important;
+    z-index: 100100 !important;
     box-sizing: border-box !important;
     display: flex !important;
     flex-direction: column !important;
@@ -2208,6 +2260,135 @@ const PLUGIN_STYLES = `
 .qw-lightbox-btn:hover { background: rgba(255, 255, 255, 0.26) !important; border-color: rgba(255, 255, 255, 0.42) !important; transform: translateY(-1px) !important; }
 .qw-lightbox-btn:focus-visible { outline: 2px solid #fff !important; outline-offset: 2px !important; }
 .qw-lightbox-close:hover { background: #ed4245 !important; border-color: #ed4245 !important; }
+
+.qw-root.qw-standalone-chat {
+    z-index: 100000 !important;
+    border-radius: 16px !important;
+    border: 1px solid rgba(255, 255, 255, 0.14) !important;
+    background: var(--qw-chat-bg, rgba(20, 21, 26, 0.92)) !important;
+    backdrop-filter: blur(var(--qw-blur, 28px)) saturate(1.2) !important;
+    -webkit-backdrop-filter: blur(var(--qw-blur, 28px)) saturate(1.2) !important;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.08) !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+}
+.qw-standalone-chat > .qw-chat-glass { display: none !important; }
+.qw-standalone-chat .qw-header {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    height: 48px !important;
+    min-height: 48px !important;
+    padding: 0 14px !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+    background: rgba(255, 255, 255, 0.03) !important;
+    cursor: grab !important;
+    user-select: none !important;
+    pointer-events: auto !important;
+    position: relative !important;
+}
+.qw-standalone-header-left {
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+    min-width: 0 !important;
+    flex: 1 1 auto !important;
+}
+.qw-standalone-avatar {
+    width: 28px !important;
+    height: 28px !important;
+    border-radius: 50% !important;
+    object-fit: cover !important;
+    flex-shrink: 0 !important;
+}
+.qw-standalone-title {
+    font-size: 14px !important;
+    font-weight: 650 !important;
+    color: #f4f4f5 !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+}
+.qw-standalone-header-right {
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    flex-shrink: 0 !important;
+}
+.qw-standalone-btn {
+    width: 28px !important;
+    height: 28px !important;
+    border-radius: 8px !important;
+    border: none !important;
+    background: rgba(255, 255, 255, 0.08) !important;
+    color: #e4e4e7 !important;
+    display: grid !important;
+    place-items: center !important;
+    cursor: pointer !important;
+    transition: background 0.15s, color 0.15s !important;
+}
+.qw-standalone-btn:hover {
+    background: rgba(255, 255, 255, 0.18) !important;
+    color: #ffffff !important;
+}
+.qw-standalone-btn.qw-standalone-close:hover {
+    background: #ef4444 !important;
+    color: #ffffff !important;
+}
+.qw-standalone-chat .qw-scroller {
+    flex: 1 1 auto !important;
+    padding: 8px 10px !important;
+    scrollbar-width: none !important;
+    -ms-overflow-style: none !important;
+}
+.qw-standalone-chat .qw-scroller::-webkit-scrollbar {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+}
+.qw-standalone-chat .qw-composer {
+    margin: 0 10px 10px !important;
+    width: calc(100% - 20px) !important;
+    border-radius: 12px !important;
+    background: rgba(0, 0, 0, 0.3) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+.qw-file-card-row {
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    width: 100% !important;
+    min-width: 0 !important;
+}
+.qw-file-card-row .qw-file-card {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+}
+.qw-file-copy-btn {
+    width: 32px !important;
+    height: 32px !important;
+    flex: 0 0 32px !important;
+    display: grid !important;
+    place-items: center !important;
+    padding: 0 !important;
+    border: 1px solid color-mix(in srgb, currentColor 20%, transparent) !important;
+    border-radius: 8px !important;
+    background: rgba(0, 0, 0, 0.25) !important;
+    color: inherit !important;
+    cursor: pointer !important;
+    transition: background 0.15s, border-color 0.15s, transform 0.1s !important;
+}
+.qw-file-copy-btn:hover {
+    background: rgba(255, 255, 255, 0.15) !important;
+    border-color: color-mix(in srgb, currentColor 40%, transparent) !important;
+}
+.qw-file-copy-btn:active {
+    transform: scale(0.92) !important;
+}
+.qw-file-copy-btn svg {
+    pointer-events: none !important;
+}
 `;
 
 
@@ -2270,7 +2451,7 @@ function getStore(name, ...props) {
 }
 
 function isUsableCssColor(value) {
-    if (typeof value !== "string" || !value.trim() || value === "transparent" || value === "rgba(0, 0, 0, 0)") return false;
+    if (typeof value !== "string" || !value.trim() || value === "transparent" || value === "rgba(0, 0, 0, 0)" || value === "#000000" || value === "rgb(0, 0, 0)") return false;
     return typeof window.CSS?.supports !== "function" || window.CSS.supports("color", value);
 }
 
@@ -2281,27 +2462,70 @@ function getRoleDisplayColor(role) {
 
 function getConversationRoleColor(guildId, userId, outer) {
     if (!userId) return "";
-    let member = null;
-    if (guildId) {
-        const GuildMemberStore = getStore("GuildMemberStore", "getMember", "getMembers", "getNick");
-        const GuildRoleStore = getStore("GuildRoleStore", "getSortedRoles", "getRole");
-        member = GuildMemberStore?.getMember?.(guildId, userId);
-        if (member) {
+    userId = String(userId);
+
+    const activeGuildId = guildId
+        || getStore("SelectedGuildStore", "getGuildId")?.getGuildId?.()
+        || getStore("ChannelStore", "getChannel")?.getChannel?.(getStore("SelectedChannelStore", "getChannelId")?.getChannelId?.())?.guild_id;
+
+    const GuildMemberStore = getStore("GuildMemberStore", "getMember", "getMembers", "getNick");
+    const GuildRoleStore = getStore("GuildRoleStore", "getSortedRoles", "getRole");
+
+    if (activeGuildId && GuildMemberStore?.getMember) {
+        const member = GuildMemberStore.getMember(activeGuildId, userId);
+        const memberColor = member?.colorString || member?.colorStrings?.primaryColor;
+        if (isUsableCssColor(memberColor)) return memberColor.trim();
+
+        if (member && GuildRoleStore?.getSortedRoles) {
             const memberRoleIds = new Set((member.roles || []).map(String));
-            const roles = (GuildRoleStore?.getSortedRoles?.(guildId) || []).filter(role => memberRoleIds.has(String(role.id)));
-            const aptIndex = roles.findIndex(role => String(role.name || "").trim().toLowerCase() === "apt");
-            const candidates = aptIndex >= 0 ? roles.slice(aptIndex + 1) : roles;
-            for (const role of candidates) {
+            const roles = (GuildRoleStore.getSortedRoles(activeGuildId) || []).filter(role => memberRoleIds.has(String(role.id)));
+            for (const role of roles) {
                 const color = getRoleDisplayColor(role);
                 if (color) return color;
             }
         }
     }
-    const memberColor = member?.colorString || member?.colorStrings?.primaryColor;
-    if (isUsableCssColor(memberColor)) return memberColor.trim();
+
+    if (GuildMemberStore?.getMember) {
+        const GuildStore = getStore("GuildStore", "getGuilds");
+        const allGuilds = Object.values(GuildStore?.getGuilds?.() || {});
+        for (const g of allGuilds) {
+            if (g.id === activeGuildId) continue;
+            const member = GuildMemberStore.getMember(g.id, userId);
+            const memberColor = member?.colorString || member?.colorStrings?.primaryColor;
+            if (isUsableCssColor(memberColor)) return memberColor.trim();
+        }
+    }
+
+    const UserStore = getStore("UserStore", "getUser", "getCurrentUser");
+    const user = UserStore?.getUser?.(userId) || (String(UserStore?.getCurrentUser?.()?.id) === userId ? UserStore.getCurrentUser() : null);
+    if (user) {
+        const accent = user.accentColor ?? user.accent_color;
+        if (accent) {
+            const hex = typeof accent === "number" ? ("#" + accent.toString(16).padStart(6, "0")) : accent;
+            if (isUsableCssColor(hex)) return hex.trim();
+        }
+        const banner = user.bannerColor ?? user.banner_color;
+        if (banner && isUsableCssColor(banner)) return banner.trim();
+    }
+
+    const UserProfileStore = getStore("UserProfileStore", "getUserProfile");
+    const profile = UserProfileStore?.getUserProfile?.(userId);
+    if (profile) {
+        const accent = profile.accentColor ?? profile.accent_color;
+        if (accent) {
+            const hex = typeof accent === "number" ? ("#" + accent.toString(16).padStart(6, "0")) : accent;
+            if (isUsableCssColor(hex)) return hex.trim();
+        }
+        if (Array.isArray(profile.themeColors) && profile.themeColors.length > 0) {
+            const primary = profile.themeColors[0];
+            const hex = typeof primary === "number" ? ("#" + primary.toString(16).padStart(6, "0")) : primary;
+            if (isUsableCssColor(hex)) return hex.trim();
+        }
+    }
 
     const nameElement = outer?.querySelector?.('[class*="nickname_"], [class^="nickname_"], [class*="username_"], [class^="username_"], [class*="userTag_"], [class^="userTag_"]');
-    const displayedColor = nameElement ? getComputedStyle(nameElement).color : "";
+    const displayedColor = nameElement ? (nameElement.style.color || "") : "";
     return isUsableCssColor(displayedColor) ? displayedColor.trim() : "";
 }
 
@@ -2312,7 +2536,9 @@ function refreshAllConversationRoleColors() {
 function startConversationRoleColors() {
     const stores = new Set([
         getStore("GuildMemberStore", "getMember", "getMembers", "getNick"),
-        getStore("GuildRoleStore", "getSortedRoles", "getRole")
+        getStore("GuildRoleStore", "getSortedRoles", "getRole"),
+        getStore("UserProfileStore", "getUserProfile"),
+        getStore("UserStore", "getUser", "getCurrentUser")
     ].filter(Boolean));
     for (const store of stores) {
         if (typeof store.addChangeListener !== "function" || typeof store.removeChangeListener !== "function") continue;
@@ -2324,7 +2550,7 @@ function startConversationRoleColors() {
 
 function stopConversationRoleColors() {
     while (conversationRoleStoreCleanups.length) {
-        try { conversationRoleStoreCleanups.pop()(); } catch (err) {}
+        try { conversationRoleStoreCleanups.pop()(); } catch (err) { }
     }
 }
 
@@ -2421,7 +2647,7 @@ function handleGlobalProfileFileDrag(event) {
 
     event.preventDefault();
     event.stopImmediatePropagation();
-    try { event.dataTransfer.dropEffect = "copy"; } catch (err) {}
+    try { event.dataTransfer.dropEffect = "copy"; } catch (err) { }
     setGlobalFileDropTarget(data);
 
     if (event.type !== "drop") return;
@@ -2488,7 +2714,7 @@ function getAuthToken() {
     try {
         const auth = getStore("AuthenticationStore", "getToken") || window.Vencord?.Webpack?.findByProps?.("getToken");
         if (typeof auth?.getToken === "function") return auth.getToken();
-    } catch (e) {}
+    } catch (e) { }
     return "";
 }
 
@@ -2564,7 +2790,7 @@ function closeFloatingSettings() {
 
 function handleGlobalSettingsCapture(e) {
     if (!activeSettingsModal) return;
-    if (activeSettingsModal.contains(e.target) || e.target.closest?.("#qw-floating-settings, .qw-floating-gear-btn")) {
+    if (activeSettingsModal.contains(e.target) || e.target.closest?.("#qw-floating-settings, .qw-floating-gear-btn, .qw-standalone-gear")) {
         return;
     }
     closeFloatingSettings();
@@ -2621,6 +2847,26 @@ function toggleFloatingSettings(gearBtn, popout) {
     modal.id = "qw-floating-settings";
 
     const cfg = getEffectiveConfig();
+    const owner = getPopoutOuter(popout) || popout;
+    const sessionData = [...activeSessions.values()].find(data =>
+        data.outer === popout ||
+        data.session?.ui === popout ||
+        data.outer === owner ||
+        data.session?.ui === owner ||
+        data.outer?.contains?.(popout) ||
+        data.session?.ui?.contains?.(gearBtn)
+    );
+    const session = sessionData?.session;
+
+    const defaultTheirColor = (session ? getConversationRoleColor(session.guildId, session.userId, sessionData?.outer) : "") || "#99578d";
+    const defaultMyColor = (session ? getConversationRoleColor(session.guildId, session.currentUserId, null) : "") || "#613f45";
+
+    const liveMyHex = toHexColor(defaultMyColor, "#613f45");
+    const liveTheirHex = toHexColor(defaultTheirColor, "#99578d");
+
+    const currentMyColor = cfg.myColor ? toHexColor(cfg.myColor, liveMyHex) : liveMyHex;
+    const currentTheirColor = cfg.theirColor ? toHexColor(cfg.theirColor, liveTheirHex) : liveTheirHex;
+
     modal.innerHTML = `
         <div class="qw-settings-header">
             <div class="qw-settings-title">
@@ -2635,7 +2881,7 @@ function toggleFloatingSettings(gearBtn, popout) {
             <div class="qw-set-row-inline">
                 <span class="qw-set-label">My Bubble Color:</span>
                 <div class="qw-color-ctrl">
-                    <input type="color" class="qw-color-native" id="qw-my-color-picker" value="${cfg.myColor && /^#[0-9a-f]{6}$/i.test(cfg.myColor) ? cfg.myColor : '#613f45'}" title="Color Picker" />
+                    <input type="color" class="qw-color-native" id="qw-my-color-picker" value="${currentMyColor}" title="Color Picker" />
                     <button class="qw-set-reset" id="qw-my-color-reset" title="Reset to default">Default</button>
                 </div>
             </div>
@@ -2644,31 +2890,24 @@ function toggleFloatingSettings(gearBtn, popout) {
             <div class="qw-set-row-inline">
                 <span class="qw-set-label">Their Bubble Color:</span>
                 <div class="qw-color-ctrl">
-                    <input type="color" class="qw-color-native" id="qw-their-color-picker" value="${cfg.theirColor && /^#[0-9a-f]{6}$/i.test(cfg.theirColor) ? cfg.theirColor : '#99578d'}" title="Color Picker" />
+                    <input type="color" class="qw-color-native" id="qw-their-color-picker" value="${currentTheirColor}" title="Color Picker" />
                     <button class="qw-set-reset" id="qw-their-color-reset" title="Reset to default">Default</button>
                 </div>
             </div>
         </div>
         <div class="qw-set-item">
             <div class="qw-set-row-inline">
-                <span class="qw-set-label">Profile Width:</span>
-                <span class="qw-set-val" id="qw-width-val">${cfg.profileWidth}px</span>
-            </div>
-            <input type="range" class="qw-slider" id="qw-width-slider" min="180" max="750" step="5" value="${cfg.profileWidth}" />
-        </div>
-        <div class="qw-set-item">
-            <div class="qw-set-row-inline">
                 <span class="qw-set-label">Chat Width:</span>
                 <span class="qw-set-val" id="qw-chat-width-val">${cfg.chatWidth}px</span>
             </div>
-            <input type="range" class="qw-slider" id="qw-chat-width-slider" min="240" max="620" step="10" value="${cfg.chatWidth}" />
+            <input type="range" class="qw-slider" id="qw-chat-width-slider" min="240" max="800" step="10" value="${cfg.chatWidth}" />
         </div>
         <div class="qw-set-item">
             <div class="qw-set-row-inline">
-                <span class="qw-set-label">Profile & Chat Height:</span>
-                <span class="qw-set-val" id="qw-height-val">${cfg.profileHeight}px</span>
+                <span class="qw-set-label">Chat Height:</span>
+                <span class="qw-set-val" id="qw-chat-height-val">${cfg.chatHeight}px</span>
             </div>
-            <input type="range" class="qw-slider" id="qw-height-slider" min="320" max="900" step="10" value="${cfg.profileHeight}" />
+            <input type="range" class="qw-slider" id="qw-chat-height-slider" min="320" max="950" step="10" value="${cfg.chatHeight}" />
         </div>
         <div class="qw-set-item">
             <div class="qw-set-row-inline">
@@ -2676,6 +2915,20 @@ function toggleFloatingSettings(gearBtn, popout) {
                 <span class="qw-set-val" id="qw-font-val">${cfg.fontSize}px</span>
             </div>
             <input type="range" class="qw-slider" id="qw-font-slider" min="11" max="18" step="1" value="${cfg.fontSize}" />
+        </div>
+        <div class="qw-set-item">
+            <div class="qw-set-row-inline">
+                <span class="qw-set-label">Chat Blur:</span>
+                <span class="qw-set-val" id="qw-blur-val">${cfg.blur}px</span>
+            </div>
+            <input type="range" class="qw-slider" id="qw-blur-slider" min="0" max="50" step="1" value="${cfg.blur}" />
+        </div>
+        <div class="qw-set-item">
+            <div class="qw-set-row-inline">
+                <span class="qw-set-label">Glass Darkness:</span>
+                <span class="qw-set-val" id="qw-darkness-val">${cfg.darkness}%</span>
+            </div>
+            <input type="range" class="qw-slider" id="qw-darkness-slider" min="20" max="100" step="2" value="${cfg.darkness}" />
         </div>
         <div class="qw-set-item">
             <div class="qw-set-row-inline">
@@ -2688,10 +2941,12 @@ function toggleFloatingSettings(gearBtn, popout) {
         </div>
     `;
 
-    const owner = getPopoutOuter(popout) || popout;
-    // A fixed panel can sit beside the card while remaining inside its native
-    // event boundary. Its controls then count as clicks inside the profile.
-    getNativeChatHost(getNativeProfileParts(owner)).appendChild(modal);
+    const isStandalone = popout?.classList?.contains("qw-standalone-chat") || owner?.classList?.contains("qw-standalone-chat");
+    if (isStandalone) {
+        document.body.appendChild(modal);
+    } else {
+        getNativeChatHost(getNativeProfileParts(owner)).appendChild(modal);
+    }
     activeSettingsModal = modal;
     activeSettingsOwner = owner;
     syncSettingsTheme(owner, modal);
@@ -2701,14 +2956,16 @@ function toggleFloatingSettings(gearBtn, popout) {
     const myReset = modal.querySelector("#qw-my-color-reset");
     const theirColor = modal.querySelector("#qw-their-color-picker");
     const theirReset = modal.querySelector("#qw-their-color-reset");
-    const widthSlider = modal.querySelector("#qw-width-slider");
-    const widthVal = modal.querySelector("#qw-width-val");
     const chatWidthSlider = modal.querySelector("#qw-chat-width-slider");
     const chatWidthVal = modal.querySelector("#qw-chat-width-val");
-    const heightSlider = modal.querySelector("#qw-height-slider");
-    const heightVal = modal.querySelector("#qw-height-val");
+    const chatHeightSlider = modal.querySelector("#qw-chat-height-slider");
+    const chatHeightVal = modal.querySelector("#qw-chat-height-val");
     const fontSlider = modal.querySelector("#qw-font-slider");
     const fontVal = modal.querySelector("#qw-font-val");
+    const blurSlider = modal.querySelector("#qw-blur-slider");
+    const blurVal = modal.querySelector("#qw-blur-val");
+    const darknessSlider = modal.querySelector("#qw-darkness-slider");
+    const darknessVal = modal.querySelector("#qw-darkness-val");
     const headersToggle = modal.querySelector("#qw-headers-toggle");
 
     let settingsFrame = 0;
@@ -2777,20 +3034,14 @@ function toggleFloatingSettings(gearBtn, popout) {
 
     myColor.addEventListener("input", e => updateSetting("myColor", e.target.value));
     myReset.addEventListener("click", () => {
-        myColor.value = "#613f45";
+        myColor.value = liveMyHex;
         updateSetting("myColor", "");
     });
 
     theirColor.addEventListener("input", e => updateSetting("theirColor", e.target.value));
     theirReset.addEventListener("click", () => {
-        theirColor.value = "#99578d";
+        theirColor.value = liveTheirHex;
         updateSetting("theirColor", "");
-    });
-
-    widthSlider.addEventListener("input", e => {
-        const v = parseInt(e.target.value, 10);
-        widthVal.textContent = `${v}px`;
-        updateSetting("profileWidth", v);
     });
 
     chatWidthSlider.addEventListener("input", e => {
@@ -2799,9 +3050,10 @@ function toggleFloatingSettings(gearBtn, popout) {
         updateSetting("chatWidth", v);
     });
 
-    heightSlider.addEventListener("input", e => {
+    chatHeightSlider.addEventListener("input", e => {
         const v = parseInt(e.target.value, 10);
-        heightVal.textContent = `${v}px`;
+        chatHeightVal.textContent = `${v}px`;
+        updateSetting("chatHeight", v);
         updateSetting("profileHeight", v);
     });
 
@@ -2809,6 +3061,18 @@ function toggleFloatingSettings(gearBtn, popout) {
         const v = parseInt(e.target.value, 10);
         fontVal.textContent = `${v}px`;
         updateSetting("fontSize", v);
+    });
+
+    blurSlider.addEventListener("input", e => {
+        const v = parseInt(e.target.value, 10);
+        blurVal.textContent = `${v}px`;
+        updateSetting("blur", v);
+    });
+
+    darknessSlider.addEventListener("input", e => {
+        const v = parseInt(e.target.value, 10);
+        darknessVal.textContent = `${v}%`;
+        updateSetting("darkness", v);
     });
 
     headersToggle.addEventListener("change", e => updateSetting("showHeaders", e.target.checked));
@@ -2899,16 +3163,16 @@ function openUrl(url) {
             window.DiscordNative.shell.openExternal(url);
             return;
         }
-    } catch (e) {}
+    } catch (e) { }
     try {
         if (window.Vencord?.Util?.openExternal) {
             window.Vencord.Util.openExternal(url);
             return;
         }
-    } catch (e) {}
+    } catch (e) { }
     try {
         window.open(url, "_blank", "noopener,noreferrer");
-    } catch (e) {}
+    } catch (e) { }
 }
 
 const MESSAGE_URL_REGEX = /(https?:\/\/[^\s<]+[^<.,:;"')\]\s])/g;
@@ -3046,7 +3310,7 @@ function truncateLabel(value, max = 58) {
 
 function getSiteInfo(url, embed = null) {
     let hostname = "Link";
-    try { hostname = new URL(url).hostname.replace(/^www\./i, ""); } catch (e) {}
+    try { hostname = new URL(url).hostname.replace(/^www\./i, ""); } catch (e) { }
     const host = hostname.toLowerCase();
     if (host === "youtu.be" || host.endsWith("youtube.com")) return { name: "YouTube", kind: "youtube" };
     if (host === "discord.gg" || host.endsWith("discord.com")) return { name: "Discord", kind: "discord" };
@@ -3413,7 +3677,7 @@ function makeDraggable(popout, handle) {
         isCurrentlyDragging = true;
         setNativeStyle(outer, handle, "cursor", "grabbing");
         document.body.style.userSelect = "none";
-        if (pointerId !== undefined) { try { handle.setPointerCapture(pointerId); } catch (e) {} }
+        if (pointerId !== undefined) { try { handle.setPointerCapture(pointerId); } catch (e) { } }
 
         function flushMove() {
             moveFrame = 0;
@@ -3476,7 +3740,7 @@ function makeDraggable(popout, handle) {
             window.removeEventListener("pointercancel", cancelDrag, true);
             window.removeEventListener("blur", cancelDrag, true);
             handle.removeEventListener("lostpointercapture", cancelDrag, true);
-            if (pointerId !== undefined) { try { handle.releasePointerCapture(pointerId); } catch (e) {} }
+            if (pointerId !== undefined) { try { handle.releasePointerCapture(pointerId); } catch (e) { } }
             document.body.style.userSelect = previousSelection;
             setNativeStyle(outer, handle, "cursor", "grab");
             isCurrentlyDragging = false;
@@ -3493,13 +3757,15 @@ function makeDraggable(popout, handle) {
     function preventImageDrag(event) { event.preventDefault(); }
     handle.addEventListener(downEvent, onStart, true);
     handle.addEventListener("dragstart", preventImageDrag, true);
-    draggableHandles.set(handle, { outer, cleanup() {
-        handle.removeEventListener(downEvent, onStart, true);
-        handle.removeEventListener("dragstart", preventImageDrag, true);
-        if (originalMarker === null) handle.removeAttribute("data-qw-draggable");
-        else handle.setAttribute("data-qw-draggable", originalMarker);
-        draggableHandles.delete(handle);
-    } });
+    draggableHandles.set(handle, {
+        outer, cleanup() {
+            handle.removeEventListener(downEvent, onStart, true);
+            handle.removeEventListener("dragstart", preventImageDrag, true);
+            if (originalMarker === null) handle.removeAttribute("data-qw-draggable");
+            else handle.setAttribute("data-qw-draggable", originalMarker);
+            draggableHandles.delete(handle);
+        }
+    });
 }
 
 function attachDraggables(popout) {
@@ -3657,6 +3923,16 @@ function createMessageAudio(urls, options = {}) {
     audio.src = sources[0];
     audioBox.appendChild(audio);
     return audioBox;
+}
+
+function isTextAttachment(attachment) {
+    if (!attachment) return false;
+    const filename = attachment.filename || "";
+    const url = attachment.url || "";
+    const descriptor = getFileDescriptor(filename, url, attachment.content_type || attachment.contentType);
+    const ext = (descriptor.extension || "").toLowerCase();
+    const mime = String(attachment.content_type || attachment.contentType || "").toLowerCase();
+    return descriptor.kind === "text" || ext === "txt" || ext === "log" || ext === "md" || ext === "json" || mime.startsWith("text/");
 }
 
 function createFileCard(attachment) {
@@ -3831,7 +4107,47 @@ function createMessageElement(msg, currentUserId, prevMsg) {
                 attContainer.appendChild(createMessageAudio(attachmentSources, { originalUrl: att.url, filename: att.filename }));
                 attachmentSources.forEach(source => renderedMedia.add(getMediaUrlKey(source)));
             } else {
-                attContainer.appendChild(createFileCard(att));
+                const card = createFileCard(att);
+                if (isTextAttachment(att)) {
+                    const row = document.createElement("div");
+                    row.className = "qw-file-card-row";
+                    const copyBtn = document.createElement("button");
+                    copyBtn.type = "button";
+                    copyBtn.className = "qw-file-copy-btn";
+                    copyBtn.title = "Copy content";
+                    copyBtn.setAttribute("aria-label", "Copy content");
+                    const copySvg = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+                    copyBtn.innerHTML = copySvg;
+                    copyBtn.addEventListener("click", async e => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        try {
+                            const res = await fetch(att.url);
+                            if (!res.ok) throw new Error("HTTP " + res.status);
+                            const text = await res.text();
+                            await navigator.clipboard.writeText(text);
+                            copyBtn.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>';
+                            copyBtn.style.color = "#4ade80";
+                            copyBtn.title = "Copied!";
+                            setTimeout(() => {
+                                copyBtn.innerHTML = copySvg;
+                                copyBtn.style.color = "";
+                                copyBtn.title = "Copy content";
+                            }, 1800);
+                        } catch (err) {
+                            console.error("[MBDM] Copy text file failed:", err);
+                            copyBtn.style.color = "#f87171";
+                            setTimeout(() => {
+                                copyBtn.innerHTML = copySvg;
+                                copyBtn.style.color = "";
+                            }, 1800);
+                        }
+                    });
+                    row.append(card, copyBtn);
+                    attContainer.appendChild(row);
+                } else {
+                    attContainer.appendChild(card);
+                }
             }
         }
     }
@@ -3926,7 +4242,7 @@ function createMessageDateDivider(message) {
     divider.className = "qw-date-divider";
     divider.textContent = date.toDateString() === today.toDateString() ? "Today"
         : date.toDateString() === yesterday.toDateString() ? "Yesterday"
-        : date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+            : date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
     return divider;
 }
 
@@ -4236,6 +4552,7 @@ function buildUI(username, onSend, onLoadOlder, userId = "") {
         clearAttachments();
         input.value = "";
         input.style.height = "auto";
+        input.style.overflowY = "hidden";
         onSend(text, files, false, 0);
     }
 
@@ -4248,7 +4565,9 @@ function buildUI(username, onSend, onLoadOlder, userId = "") {
 
     input.addEventListener("input", () => {
         input.style.height = "auto";
-        input.style.height = Math.min(input.scrollHeight, 90) + "px";
+        const nextH = Math.min(input.scrollHeight, 80);
+        input.style.height = nextH + "px";
+        input.style.overflowY = input.scrollHeight > 80 ? "auto" : "hidden";
     });
 
     sendBtn.addEventListener("pointerdown", event => {
@@ -4264,6 +4583,15 @@ function buildUI(username, onSend, onLoadOlder, userId = "") {
     });
 
     return root;
+}
+
+function getMaxMessageLength() {
+    try {
+        const UserStore = getStore("UserStore", "getCurrentUser");
+        const currentUser = UserStore?.getCurrentUser?.();
+        if (currentUser?.premiumType === 2) return 4000;
+    } catch (e) { }
+    return 2000;
 }
 
 class WhisperSession {
@@ -4304,13 +4632,15 @@ class WhisperSession {
         );
         this.applyRoleBubbleColors();
 
-        if (!this.nativeFooter) return;
-        const outer = getPopoutOuter(this.nativeFooter);
-        if (!outer || !this.nativeFooter.parentNode) return;
-        this.nativeFooterDisplay = [this.nativeFooter.style.getPropertyValue("display"), this.nativeFooter.style.getPropertyPriority("display")];
-        this.nativeFooter.style.setProperty("display", "none", "important");
-        this.nativeFooter.classList.add("qw-native-hidden");
-        this.layout = attachChatLayout(outer, this.ui);
+        if (this.nativeFooter) {
+            const outer = getPopoutOuter(this.nativeFooter);
+            if (outer && this.nativeFooter.parentNode) {
+                this.nativeFooterDisplay = [this.nativeFooter.style.getPropertyValue("display"), this.nativeFooter.style.getPropertyPriority("display")];
+                this.nativeFooter.style.setProperty("display", "none", "important");
+                this.nativeFooter.classList.add("qw-native-hidden");
+                this.layout = attachChatLayout(outer, this.ui);
+            }
+        }
 
         const closeBtn = this.ui.querySelector("#qw-close-profile-btn");
         if (closeBtn) {
@@ -4360,6 +4690,7 @@ class WhisperSession {
         this.messageResizeObserver?.observe(this.scroller);
 
         this.container.addEventListener("click", e => {
+            if (e.target.closest(".qw-file-copy-btn")) return;
             const link = e.target.closest("a.qw-link, a.qw-msg-file, a.qw-file-card, a.qw-link-preview");
             if (link && link.href) {
                 e.preventDefault();
@@ -4382,6 +4713,7 @@ class WhisperSession {
 
         this.container.addEventListener("auxclick", e => {
             if (e.button === 1) {
+                if (e.target.closest(".qw-file-copy-btn")) return;
                 const img = e.target.closest("img.qw-msg-img");
                 if (img && img.src) {
                     e.preventDefault();
@@ -4430,6 +4762,7 @@ class WhisperSession {
                 this.messages = [...cached];
                 this.messageMap.clear();
                 for (const m of this.messages) this.messageMap.set(m.id, m);
+                this.applyRoleBubbleColors();
                 this.renderAll(true);
             }
 
@@ -4440,6 +4773,7 @@ class WhisperSession {
                 this.messages = res.body.reverse();
                 this.messageMap.clear();
                 for (const m of this.messages) this.messageMap.set(m.id, m);
+                this.applyRoleBubbleColors();
                 this.renderAll(followLatest);
                 if (!followLatest) this.scheduleViewportAnchorRestore();
             }
@@ -4518,8 +4852,8 @@ class WhisperSession {
         if (this.destroyed || !this.ui) return;
         const cfg = getEffectiveConfig();
         const outer = getPopoutOuter(this.nativeFooter);
-        const theirColor = getConversationRoleColor(this.guildId, this.userId, outer) || cfg.theirColor || "#99578d";
-        const myColor = getConversationRoleColor(this.guildId, this.currentUserId, null) || cfg.myColor || "#613f45";
+        const theirColor = cfg.theirColor || getConversationRoleColor(this.guildId, this.userId, outer) || "#99578d";
+        const myColor = cfg.myColor || getConversationRoleColor(this.guildId, this.currentUserId, null) || "#613f45";
         this.ui.style.setProperty("--qw-their-bubble-color", theirColor);
         this.ui.style.setProperty("--qw-their-bubble-text", getContrastColor(theirColor) || "#ffffff");
         this.ui.style.setProperty("--qw-my-bubble-color", myColor);
@@ -4632,9 +4966,25 @@ class WhisperSession {
         }
     }
 
+
+
+
+
+
+
+
+
+
     async sendMessage(content, files = null, isVoice = false, duration = 0) {
         try {
             files = (Array.isArray(files) ? files : [files]).filter(Boolean);
+            const maxLen = getMaxMessageLength();
+            if (typeof content === "string" && content.length > maxLen) {
+                const txtBlob = new Blob([content], { type: "text/plain;charset=utf-8" });
+                const txtFile = new File([txtBlob], "message.txt", { type: "text/plain" });
+                files.push(txtFile);
+                content = "";
+            }
             let res;
             if (files.length) {
                 res = await sendMultipartMessage(this.channelId, content, files, isVoice, duration);
@@ -4727,15 +5077,75 @@ class WhisperSession {
 function getUserId(node) {
     if (!node) return null;
 
-    const fiberKey = Object.keys(node).find(k => k.startsWith("__reactFiber$") || k.startsWith("__reactInternalInstance$"));
-    if (fiberKey) {
-        let curr = node[fiberKey], depth = 0;
+    const directId = node.getAttribute?.("data-user-id")
+        || node.getAttribute?.("data-mention-id")
+        || node.dataset?.userId
+        || node.dataset?.mentionId;
+    if (directId && /^\d{17,20}$/.test(directId)) return String(directId);
+
+    const directParent = node.closest?.('[data-user-id], [data-mention-id]');
+    if (directParent) {
+        const pid = directParent.getAttribute("data-user-id") || directParent.getAttribute("data-mention-id");
+        if (pid && /^\d{17,20}$/.test(pid)) return String(pid);
+    }
+
+    const listItem = node.closest?.('[data-list-item-id*="members-"]');
+    if (listItem) {
+        const listId = listItem.getAttribute('data-list-item-id') || '';
+        const match = listId.match(/(\d{17,20})$/);
+        if (match) return match[1];
+    }
+
+    const img = node.matches?.('img[src*="/avatars/"], img[src*="/users/"]') ? node : (
+        node.querySelector?.('img[src*="/avatars/"], img[src*="/users/"]') ||
+        node.closest?.('[id^="chat-messages-"], [class*="message_"], [class*="contents_"]')?.querySelector?.('img[src*="/avatars/"], img[src*="/users/"]')
+    );
+    if (img?.src) {
+        const avatarMatch = img.src.match(/\/(?:avatars|users)\/(\d{17,20})\//);
+        if (avatarMatch) return avatarMatch[1];
+    }
+
+    const msgRow = node.closest?.('[id^="chat-messages-"], [id^="message-username-"], [id^="message-content-"]');
+    if (msgRow && msgRow.id) {
+        let msgId = null;
+        let channelId = null;
+        if (msgRow.id.startsWith("chat-messages-")) {
+            const parts = msgRow.id.split('-');
+            msgId = parts[parts.length - 1];
+            channelId = parts.length >= 3 ? parts[parts.length - 2] : null;
+        } else if (msgRow.id.startsWith("message-username-")) {
+            msgId = msgRow.id.replace("message-username-", "");
+        } else if (msgRow.id.startsWith("message-content-")) {
+            msgId = msgRow.id.replace("message-content-", "");
+        }
+        const selChannelId = channelId || getStore("SelectedChannelStore", "getChannelId")?.getChannelId?.();
+        if (selChannelId && msgId) {
+            const MessageStore = getStore("MessageStore", "getMessage", "getMessages");
+            const msg = MessageStore?.getMessage?.(selChannelId, msgId) || MessageStore?.getMessages?.(selChannelId)?.get?.(msgId);
+            if (msg?.author?.id) return String(msg.author.id);
+        }
+    }
+
+    let el = node;
+    let fiberKey = null;
+    let fDepth = 0;
+    while (el && !fiberKey && fDepth < 8) {
+        fiberKey = Object.keys(el).find(k => k.startsWith("__reactFiber$") || k.startsWith("__reactInternalInstance$"));
+        if (!fiberKey) { el = el.parentElement; fDepth++; }
+    }
+
+    if (el && fiberKey) {
+        let curr = el[fiberKey], depth = 0;
         while (curr && depth < 80) {
             const p = curr.memoizedProps;
             if (p) {
                 if (p.user?.id) return String(p.user.id);
                 if (p.userId) return String(p.userId);
                 if (p.user?.userId) return String(p.user.userId);
+                if (p.message?.author?.id) return String(p.message.author.id);
+                if (p.message?.authorId) return String(p.message.authorId);
+                if (p.author?.id) return String(p.author.id);
+                if (p.authorId) return String(p.authorId);
                 if (p.voiceState?.userId) return String(p.voiceState.userId);
                 if (p.speaker?.id) return String(p.speaker.id);
                 if (p.member?.userId) return String(p.member.userId);
@@ -4743,12 +5153,12 @@ function getUserId(node) {
                 if (p.recipient?.id) return String(p.recipient.id);
                 if (p.targetUser?.id) return String(p.targetUser.id);
                 if (p.userProfile?.userId) return String(p.userProfile.userId);
-                if (p.channel?.recipients?.length === 1) return String(p.channel.recipients[0]);
             }
             if (curr.memoizedState) {
                 const s = curr.memoizedState;
                 if (s.userId) return String(s.userId);
                 if (s.user?.id) return String(s.user.id);
+                if (s.author?.id) return String(s.author.id);
             }
             curr = curr.return; depth++;
         }
@@ -5057,7 +5467,7 @@ function stopVoiceUnreadNotifications() {
     cancelAnimationFrame(voiceUnreadSyncFrame);
     voiceUnreadSyncFrame = 0;
     while (voiceUnreadStoreCleanups.length) {
-        try { voiceUnreadStoreCleanups.pop()(); } catch (err) {}
+        try { voiceUnreadStoreCleanups.pop()(); } catch (err) { }
     }
     for (const channelId of [...pendingVoiceUnreadAcks.keys()]) clearPendingVoiceUnreadAck(channelId);
     routedVoiceUnreads.clear();
@@ -5123,8 +5533,8 @@ function handleUnreadDMItemClick(e, target, dmsContainer) {
     let channelId = null;
 
     const navEl = dmsItem.querySelector?.('[data-list-item-id^="guildsnav___"]') ||
-                  (dmsItem.getAttribute?.("data-list-item-id")?.startsWith("guildsnav___") ? dmsItem : null) ||
-                  target.closest?.('[data-list-item-id^="guildsnav___"]');
+        (dmsItem.getAttribute?.("data-list-item-id")?.startsWith("guildsnav___") ? dmsItem : null) ||
+        target.closest?.('[data-list-item-id^="guildsnav___"]');
     if (navEl) {
         const rawId = navEl.getAttribute("data-list-item-id");
         if (rawId && rawId !== "guildsnav___home") {
@@ -5133,7 +5543,7 @@ function handleUnreadDMItemClick(e, target, dmsContainer) {
     }
 
     const avatarImg = dmsItem.querySelector?.('img[src*="/avatars/"]') ||
-                      (target.tagName === "IMG" && target.src?.includes("/avatars/") ? target : null);
+        (target.tagName === "IMG" && target.src?.includes("/avatars/") ? target : null);
     if (avatarImg?.src) {
         const match = avatarImg.src.match(/\/avatars\/(\d{17,20})\//);
         if (match) userId = match[1];
@@ -5165,46 +5575,229 @@ function handleUnreadDMItemClick(e, target, dmsContainer) {
     e.preventDefault();
     e.stopPropagation();
     e.stopImmediatePropagation();
-    if (e.type !== "click") return;
+    const now = Date.now();
+    if (now - lastMiddleClickTimestamp < 350 && lastMiddleClickUserId === userId) return;
+    lastMiddleClickTimestamp = now;
+    lastMiddleClickUserId = userId;
     acknowledgeDirectMessageForUser(userId, channelId);
-    if (openNativeProfile(userId, { channelId, guildId: null, anchor: target })) return;
-    // Bootstrap from Discord's own profile when its lazy native renderer has
-    // not been seen yet. This never navigates the conversation into the DM.
-    const actions = getStore("UserProfileActions", "openUserProfileModal", "closeUserProfileModal");
-    actions?.openUserProfileModal?.({ userId, channelId, analyticsLocation: { page: "DM Channel", section: "Profile Popout" } });
+    const activeGuildId = getStore("SelectedGuildStore", "getGuildId")?.getGuildId?.()
+        || getStore("ChannelStore", "getChannel")?.getChannel?.(getStore("SelectedChannelStore", "getChannelId")?.getChannelId?.())?.guild_id;
+    openStandaloneChat(userId, { channelId, guildId: activeGuildId || null, anchor: target });
+}
+
+function positionStandaloneChat(ui, index = 0, anchor = null) {
+    const cfg = getEffectiveConfig();
+    const w = cfg.chatWidth || 400;
+    const h = cfg.chatHeight || cfg.profileHeight || 540;
+    ui.style.setProperty("width", `${w}px`, "important");
+    ui.style.setProperty("height", `${h}px`, "important");
+    ui.style.setProperty("z-index", String(100000 + index), "important");
+
+    const saved = getStoredConfig().lastPosition;
+    const offset = index * 24;
+    let left, top;
+
+    if (saved && typeof saved.left === "number" && typeof saved.top === "number") {
+        left = Math.max(10, Math.min(window.innerWidth - w - 10, saved.left + offset));
+        top = Math.max(10, Math.min(window.innerHeight - h - 10, saved.top + offset));
+    } else if (anchor && typeof anchor.getBoundingClientRect === "function") {
+        const rect = anchor.getBoundingClientRect();
+        const fitsRight = rect.right + w + 16 <= window.innerWidth;
+        if (fitsRight) {
+            left = rect.right + 12;
+        } else {
+            left = Math.max(10, rect.left - w - 12);
+        }
+        top = Math.max(10, Math.min(window.innerHeight - h - 10, rect.top));
+    } else {
+        left = Math.max(10, Math.round((window.innerWidth - w) / 2) + offset);
+        top = Math.max(10, Math.round((window.innerHeight - h) / 2) + offset);
+    }
+
+    ui.style.setProperty("left", `${left}px`, "important");
+    ui.style.setProperty("top", `${top}px`, "important");
+}
+
+function setupStandaloneHeader(ui, user, username, userId) {
+    const header = ui.querySelector(".qw-header");
+    if (!header) return;
+    const avatarUrl = getAvatarUrl(user);
+    header.innerHTML = `
+        <div class="qw-standalone-header-left">
+            <img class="qw-standalone-avatar" src="${avatarUrl}" alt="${escapeHtml(username)}" />
+            <span class="qw-standalone-title" title="${escapeHtml(username)}">${escapeHtml(username)}</span>
+        </div>
+        <div class="qw-standalone-header-right">
+            <button class="qw-standalone-btn qw-standalone-gear" id="qw-standalone-gear-${userId}" title="Settings" aria-label="Settings">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                    <path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.48.48 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.49.49 0 0 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
+                </svg>
+            </button>
+            <button class="qw-standalone-btn qw-standalone-close" id="qw-standalone-close-${userId}" title="Close" aria-label="Close">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+            </button>
+        </div>
+    `;
+
+    const closeBtn = header.querySelector(".qw-standalone-close");
+    if (closeBtn) {
+        closeBtn.addEventListener("pointerdown", e => e.stopPropagation());
+        closeBtn.addEventListener("mousedown", e => e.stopPropagation());
+        closeBtn.addEventListener("click", e => {
+            e.preventDefault();
+            e.stopPropagation();
+            closeSession(userId);
+        });
+    }
+
+    const gearBtn = header.querySelector(".qw-standalone-gear");
+    if (gearBtn) {
+        gearBtn.addEventListener("pointerdown", e => e.stopPropagation());
+        gearBtn.addEventListener("mousedown", e => e.stopPropagation());
+        gearBtn.addEventListener("click", e => {
+            e.preventDefault();
+            e.stopPropagation();
+            toggleFloatingSettings(gearBtn, ui);
+        });
+    }
+}
+
+async function openStandaloneChat(userId, options = {}) {
+    if (!pluginRunning || !userId) return false;
+    userId = String(userId);
+
+    if (activeSessions.has(userId)) {
+        bringToFront(userId);
+        const data = activeSessions.get(userId);
+        data?.session?.focusComposer?.();
+        data?.session?.scrollToLatest?.();
+        return true;
+    }
+
+    const channelId = options.channelId || await resolveDMChannelId(userId);
+    if (!channelId || !pluginRunning) return false;
+
+    const UserStore = getStore("UserStore", "getCurrentUser");
+    let user = UserStore?.getUser?.(userId);
+    if (!user) {
+        try {
+            const res = await apiRequest("get", `/users/${userId}`);
+            if (res?.body) user = res.body;
+        } catch (e) { }
+    }
+    const username = user?.globalName || user?.username || options.usernameHint || "user";
+
+    const session = new WhisperSession(null, userId, channelId, username, options.guildId || null);
+    const ui = session.ui;
+    if (!ui) return false;
+
+    ui.classList.add("qw-standalone-chat");
+    setupStandaloneHeader(ui, user, username, userId);
+    positionStandaloneChat(ui, sessionStack.length, options.anchor);
+    document.body.appendChild(ui);
+
+    const header = ui.querySelector(".qw-header");
+    if (header) makeDraggable(ui, header);
+
+    const onPointerActivate = () => bringToFront(userId);
+    const onFocusActivate = () => bringToFront(userId);
+    ui.addEventListener("pointerdown", onPointerActivate, true);
+    ui.addEventListener("focusin", onFocusActivate, true);
+
+    activeSessions.set(userId, {
+        userId,
+        outer: ui,
+        session,
+        isStandalone: true,
+        attributes: new Map(),
+        onPointerActivate,
+        onFocusActivate
+    });
+
+    sessionStack.push(userId);
+    bringToFront(userId);
+
+    setTimeout(() => {
+        const input = ui.querySelector("#qw-input");
+        if (input?.isConnected) input.focus({ preventScroll: true });
+    }, 60);
+
+    return true;
+}
+
+function findUserTriggerElement(target) {
+    if (!target?.closest) return null;
+    return target.closest([
+        '[data-user-id]',
+        '[data-mention-id]',
+        '[data-list-item-id*="members-"]',
+        '[data-list-item-id*="channels-"]',
+        '[class*="voiceUser"]',
+        '[class*="member_"]',
+        '[class*="member-"]',
+        '[class*="member"]',
+        '[class*="username"]',
+        '[class*="avatar"]',
+        '[class*="avatarWrapper"]',
+        '[class*="userAvatar"]',
+        '[class*="userPopout"]',
+        '[class*="userProfile"]',
+        '[class*="mention"]',
+        '[id^="message-username-"]',
+        '[id^="chat-messages-"]',
+        '[class*="message_"]',
+        'li[role="listitem"]',
+        'img[src*="/avatars/"]',
+        'img[src*="/users/"]'
+    ].join(', ')) || target;
 }
 
 function handleTriggerToggle(event) {
-    if (event.button !== 0) return;
+    if (event.button !== 1) return;
     const target = event.target;
-    if (!target?.closest || target.closest('[role="dialog"], [id^="popout_"], .qw-chat-sidecar, [role="menu"], #qw-lightbox, #qw-floating-settings')) return;
+    if (!target?.closest || target.closest('.qw-chat-sidecar, #qw-lightbox, #qw-floating-settings')) return;
     const dmsContainer = target.closest("#guild-list-unread-dms");
     if (dmsContainer) {
         handleUnreadDMItemClick(event, target, dmsContainer);
         return;
     }
-    if (event.type !== "click") return;
-    const trigger = target.closest('[data-user-id], [class*="voiceUser"], [class*="member_"], [class*="username"], [class*="avatar_"], [class*="avatarWrapper_"]');
+    const trigger = findUserTriggerElement(target);
     if (!trigger) return;
-    const userId = trigger.getAttribute("data-user-id") || getUserId(target) || getUserId(trigger);
+    const userId = getUserId(trigger) || getUserId(target) || trigger.getAttribute?.("data-user-id");
     const currentUser = getStore("UserStore", "getCurrentUser")?.getCurrentUser?.();
     if (!userId || String(userId) === String(currentUser?.id)) return;
-    acknowledgeVoiceUnreadForUser(userId);
-    if (!openNativeProfile(userId, { anchor: trigger })) return;
+
     event.preventDefault();
     event.stopImmediatePropagation();
+
+    const now = Date.now();
+    if (now - lastMiddleClickTimestamp < 350 && lastMiddleClickUserId === userId) return;
+    lastMiddleClickTimestamp = now;
+    lastMiddleClickUserId = userId;
+
+    acknowledgeVoiceUnreadForUser(userId);
+    const activeGuildId = getStore("SelectedGuildStore", "getGuildId")?.getGuildId?.()
+        || getStore("ChannelStore", "getChannel")?.getChannel?.(getStore("SelectedChannelStore", "getChannelId")?.getChannelId?.())?.guild_id;
+    openStandaloneChat(userId, { anchor: trigger, guildId: activeGuildId });
 }
 
 async function resolveDMChannelId(userId) {
+    if (!userId) return null;
+    userId = String(userId);
     const ChannelStore = getStore("ChannelStore", "getDMFromUserId");
     if (ChannelStore?.getDMFromUserId) {
         const channelId = ChannelStore.getDMFromUserId(userId);
-        if (channelId) return channelId;
+        if (channelId) return String(channelId);
     }
 
     try {
-        const res = await apiRequest("post", "/users/@me/channels", { recipients: [userId] });
-        if (res?.body?.id) return res.body.id;
+        const res = await apiRequest("post", "/users/@me/channels", {
+            recipient_id: userId
+        });
+        if (res?.body?.id) return String(res.body.id);
     } catch (err) {
         console.error("[MBDM] DM channel creation failed:", err);
     }
@@ -5400,20 +5993,22 @@ function scan() {
         if (!outer.isConnected) pendingNativeMounts.delete(outer);
     }
     for (const [uid, data] of [...activeSessions]) {
-        if (!data.outer.isConnected || !data.session.ui?.isConnected || !data.session.nativeFooter?.isConnected) {
+        if (!data.outer.isConnected || !data.session.ui?.isConnected || (!data.isStandalone && !data.session.nativeFooter?.isConnected)) {
             cleanupNativeSession(uid);
             continue;
         }
-        attachDraggables(data.outer);
-        attachFloatingGear(data.outer);
-        attachTopCloseBtn(data.outer, uid);
-        layoutProfileTopControls(data.outer);
-        scheduleNativeProfileEffects(data.outer);
+        if (!data.isStandalone) {
+            attachDraggables(data.outer);
+            attachFloatingGear(data.outer);
+            attachTopCloseBtn(data.outer, uid);
+            layoutProfileTopControls(data.outer);
+            scheduleNativeProfileEffects(data.outer);
+        }
     }
     for (const outer of [...nativeProfileEffectLayouts.keys()]) {
         if (!outer.isConnected) destroyNativeProfileEffectLayout(outer);
     }
-    for (const tb of document.querySelectorAll('[role="textbox"], textarea')) {
+    if (false) for (const tb of document.querySelectorAll('[role="textbox"], textarea')) {
         if (tb.closest('main, [class*="chatContent_"], .qw-root, [role="menu"], [class*="note_"], [class*="userInfoSection_"], [class*="userBio_"], [class*="customStatus_"]')) continue;
         if (tb._qwInspecting) continue;
         const isMessage = (tb.getAttribute("aria-label") || "").includes("@") ||
@@ -5452,9 +6047,10 @@ const plugin = _definePlugin({
         const rootNode = document.body;
         observer.observe(rootNode, { childList: true, subtree: true });
         window.addEventListener("resize", enforcePopoutWidth);
-        document.addEventListener("click", handleTriggerToggle, true);
         document.addEventListener("pointerdown", handleTriggerToggle, true);
         document.addEventListener("mousedown", handleTriggerToggle, true);
+        document.addEventListener("mouseup", handleTriggerToggle, true);
+        document.addEventListener("auxclick", handleTriggerToggle, true);
         scan();
     },
 
@@ -5472,7 +6068,7 @@ const plugin = _definePlugin({
         document.removeEventListener("pointerdown", handleTriggerToggle, true);
         document.removeEventListener("mousedown", handleTriggerToggle, true);
         document.removeEventListener("mouseup", handleTriggerToggle, true);
-        document.removeEventListener("click", handleTriggerToggle, true);
+        document.removeEventListener("auxclick", handleTriggerToggle, true);
         if (observer) {
             observer.disconnect();
             observer = null;
