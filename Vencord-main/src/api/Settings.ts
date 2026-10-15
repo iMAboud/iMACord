@@ -112,7 +112,8 @@ const DefaultSettings: Settings = {
     plugins: {
         FakeNitro: { enabled: true },
         iMAMenu: { enabled: true },
-        CopyFileContents: { enabled: true }
+        CopyFileContents: { enabled: true },
+        MemberCount: { enabled: true }
     },
 
     uiElements: {
@@ -188,7 +189,8 @@ export const SettingsStore = new SettingsStoreClass(settings, {
                 "imamenu",
                 "copyfilecontents",
                 "copyfilecontent",
-                "crashhandler"
+                "crashhandler",
+                "membercount"
             ].includes(key.toLowerCase());
 
             return target[key] = {
