@@ -142,13 +142,97 @@ function idbSaveRules(rules) {
     } catch {}
 }
 
-function isProtectedElement(el) {
+const GENERIC_CLASS_BASES = new Set([
+    "container",
+    "wrapper",
+    "content",
+    "base",
+    "layer",
+    "layers",
+    "baseLayer",
+    "app",
+    "appMount",
+    "appAsidePanelWrapper",
+    "notAppAsidePanel",
+    "bg",
+    "scroller",
+    "scrollerBase",
+    "inner",
+    "item",
+    "list",
+    "row",
+    "header",
+    "body",
+    "footer",
+    "panel",
+    "panels",
+    "sidebar",
+    "page",
+    "chat",
+    "chatContent",
+    "main",
+    "root",
+    "button",
+    "icon",
+    "text",
+    "title",
+    "label",
+    "divider",
+    "section",
+    "children",
+    "clickable",
+    "layout"
+]);
+
+function isCoreDiscordLayoutElement(el) {
     if (!el || !(el instanceof Element)) return true;
     if (FORBIDDEN_TAGS.has(el.tagName)) return true;
     if (el.id === "app-mount" || el.id === POPUP_ID || el.id === OVERLAY_ID) return true;
-    if (el.closest(`#${POPUP_ID}`) || el.closest(`#${OVERLAY_ID}`)) return true;
+    if (el.querySelector && el.querySelector("#app-mount")) return true;
+    if (el.closest && (el.closest(`#${POPUP_ID}`) || el.closest(`#${OVERLAY_ID}`))) return true;
+
+    const cls = typeof el.className === "string" ? el.className : "";
+    if (/\b(appAsidePanelWrapper|notAppAsidePanel|app|appMount|layers|layer|baseLayer|bg)_[a-zA-Z0-9]+\b/.test(cls)) {
+        return true;
+    }
+
+    if (/\b(container|base|content)_c48ade\b/.test(cls)) {
+        return true;
+    }
+
+    const parent = el.parentElement;
+    if (parent) {
+        const parentCls = typeof parent.className === "string" ? parent.className : "";
+        if (parent.id === "app-mount" || /\b(baseLayer|layers|app|notAppAsidePanel)_[a-zA-Z0-9]+\b/.test(parentCls)) {
+            if (/\b(container|base|content|sidebar|page|chat)_[a-zA-Z0-9]+\b/.test(cls)) {
+                return true;
+            }
+        }
+    }
+
+    try {
+        if (
+            el.querySelector &&
+            (el.querySelector('nav[aria-label*="Servers"]') ||
+                el.querySelector('[class*="baseLayer_"]') ||
+                el.querySelector('[class*="layers_"]'))
+        ) {
+            return true;
+        }
+    } catch {}
+
+    return false;
+}
+
+function isProtectedElement(el) {
+    if (isCoreDiscordLayoutElement(el)) return true;
     const rect = el.getBoundingClientRect();
-    if (rect.width >= window.innerWidth * 0.98 && rect.height >= window.innerHeight * 0.98) {
+    if (
+        window.innerWidth > 0 &&
+        window.innerHeight > 0 &&
+        rect.width >= window.innerWidth * 0.92 &&
+        rect.height >= window.innerHeight * 0.92
+    ) {
         return true;
     }
     return false;
@@ -161,11 +245,84 @@ function escapeCssIdentifier(str) {
     return String(str).replace(/([!"#$%&'()*+,./:;<=>?@[\\\]^`{|}~])/g, "\\$1");
 }
 
-function normalizeHashedSelector(selector) {
-    if (!selector || typeof selector !== "string") return selector;
-    return selector.replace(/\.([a-zA-Z0-9]+?)_{1,2}[a-zA-Z0-9]{5,8}(?![a-zA-Z0-9_-])/g, (_, base) => {
-        return `[class*="${base}_"]`;
-    });
+function isUnsafeRuleSelector(selector) {
+    if (!selector || typeof selector !== "string") return true;
+    const trimmed = selector.trim();
+    if (!trimmed) return true;
+
+    if (/^(html|body|head|#app-mount)\b/i.test(trimmed)) return true;
+
+    const parts = trimmed.split(">").map(s => s.trim()).filter(Boolean);
+    const lastSegment = parts[parts.length - 1] || trimmed;
+
+    const bareGenericMatch = lastSegment.match(
+        /^(?:div|section|main|nav|aside)?\[class\*="(container|base|content|layer|layers|baseLayer|app|appMount|bg|wrapper|sidebar|page|chat)_"\](?::nth-of-type\(\d+\)|:first-child|:last-child)?$/i
+    );
+    if (bareGenericMatch) {
+        const genericBase = bareGenericMatch[1].toLowerCase();
+        if (
+            ["container", "base", "content", "layer", "layers", "baselayer", "app", "appmount", "bg"].includes(genericBase)
+        ) {
+            const hasSpecificAnchor = parts.slice(0, -1).some(
+                p =>
+                    p.includes("aria-label=") ||
+                    p.includes("data-list-item-id=") ||
+                    p.includes("#") ||
+                    /\[class\*="(?!(?:container|base|content|layer|layers|app|wrapper|scroller|inner|list)_)[a-zA-Z0-9]+_"\]/.test(p) ||
+                    /\.[a-zA-Z0-9_-]+_{1,2}[a-zA-Z0-9]{5,8}/.test(p)
+            );
+            if (!hasSpecificAnchor) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+function repairAndSanitizeRules(rules) {
+    if (!Array.isArray(rules)) return { rules: [], changed: false };
+    let changed = false;
+
+    const repaired = rules
+        .filter(r => r && typeof r === "object" && typeof r.selector === "string")
+        .map(r => {
+            let selector = r.selector.trim();
+            let enabled = r.enabled !== false;
+
+            if (typeof r.label === "string") {
+                const labelClassMatch = r.label.match(/^([a-zA-Z0-9]+)\.(([a-zA-Z0-9_-]+?)_{1,2}[a-zA-Z0-9]{5,8})\b/);
+                if (labelClassMatch) {
+                    const fullHashedClass = labelClassMatch[2];
+                    const baseName = labelClassMatch[3];
+                    const wildcardToken = `[class*="${baseName}_"]`;
+                    if (selector.includes(wildcardToken)) {
+                        const lastIdx = selector.lastIndexOf(wildcardToken);
+                        if (lastIdx !== -1) {
+                            selector =
+                                selector.slice(0, lastIdx) +
+                                `.${escapeCssIdentifier(fullHashedClass)}` +
+                                selector.slice(lastIdx + wildcardToken.length);
+                            changed = true;
+                        }
+                    }
+                }
+            }
+
+            if (isUnsafeRuleSelector(selector)) {
+                if (enabled) {
+                    enabled = false;
+                    changed = true;
+                }
+            }
+
+            if (selector !== r.selector || enabled !== (r.enabled !== false)) {
+                return { ...r, selector, enabled };
+            }
+            return r;
+        });
+
+    return { rules: repaired, changed };
 }
 
 function getStableClassSelector(el, smartMode = true) {
@@ -178,7 +335,7 @@ function getStableClassSelector(el, smartMode = true) {
         const stableParts = [];
         for (const cls of classList.slice(0, 3)) {
             const match = cls.match(/^([a-zA-Z0-9]+?)_{1,2}[a-zA-Z0-9]{5,8}$/);
-            if (match) {
+            if (match && !GENERIC_CLASS_BASES.has(match[1])) {
                 stableParts.push(`[class*="${match[1]}_"]`);
             } else {
                 stableParts.push(`.${escapeCssIdentifier(cls)}`);
@@ -330,6 +487,7 @@ export default definePlugin({
     boundKeyDown: null,
     boundWindowResize: null,
     fluxSubscription: null,
+    mountValidationTimers: [],
 
     start() {
         this.injectUiStyles();
@@ -350,10 +508,19 @@ export default definePlugin({
                 this.applyPersistentRules();
             };
             dispatcher.subscribe("CHANNEL_SELECT", this.fluxSubscription);
+            dispatcher.subscribe("CONNECTION_OPEN", this.fluxSubscription);
         }
+
+        this.mountValidationTimers = [500, 1500, 3000, 6000].map(delay =>
+            setTimeout(() => this.applyPersistentRules(), delay)
+        );
     },
 
     stop() {
+        if (Array.isArray(this.mountValidationTimers)) {
+            this.mountValidationTimers.forEach(t => clearTimeout(t));
+            this.mountValidationTimers = [];
+        }
         if (this.headObserver) {
             this.headObserver.disconnect();
             this.headObserver = null;
@@ -374,6 +541,7 @@ export default definePlugin({
         const { FluxDispatcher: dispatcher } = getCommonStores();
         if (this.fluxSubscription && dispatcher && typeof dispatcher.unsubscribe === "function") {
             dispatcher.unsubscribe("CHANNEL_SELECT", this.fluxSubscription);
+            dispatcher.unsubscribe("CONNECTION_OPEN", this.fluxSubscription);
             this.fluxSubscription = null;
         }
 
@@ -433,19 +601,10 @@ export default definePlugin({
         }
 
         if (Array.isArray(loaded)) {
-            let migrated = false;
-            this.rules = loaded.map(r => {
-                if (r && typeof r.selector === "string") {
-                    const norm = normalizeHashedSelector(r.selector);
-                    if (norm !== r.selector) {
-                        migrated = true;
-                        return { ...r, selector: norm };
-                    }
-                }
-                return r;
-            });
+            const { rules: sanitized, changed } = repairAndSanitizeRules(loaded);
+            this.rules = sanitized;
             this.applyPersistentRules();
-            if (migrated) {
+            if (changed) {
                 try {
                     this.saveRules();
                 } catch {}
@@ -463,8 +622,14 @@ export default definePlugin({
                 Promise.resolve(dataStore.get(STORAGE_KEY))
                     .then(res => {
                         if (Array.isArray(res) && res.length > 0 && this.rules.length === 0) {
-                            this.rules = res;
+                            const { rules: sanitized, changed } = repairAndSanitizeRules(res);
+                            this.rules = sanitized;
                             this.applyPersistentRules();
+                            if (changed) {
+                                try {
+                                    this.saveRules();
+                                } catch {}
+                            }
                             if (this.popupEl) this.renderPopup();
                         }
                     })
@@ -474,8 +639,14 @@ export default definePlugin({
 
         idbLoadRules().then(idbRules => {
             if (Array.isArray(idbRules) && idbRules.length > 0 && this.rules.length === 0) {
-                this.rules = idbRules;
+                const { rules: sanitized, changed } = repairAndSanitizeRules(idbRules);
+                this.rules = sanitized;
                 this.applyPersistentRules();
+                if (changed) {
+                    try {
+                        this.saveRules();
+                    } catch {}
+                }
                 if (this.popupEl) this.renderPopup();
             }
         });
@@ -823,11 +994,58 @@ export default definePlugin({
         }
         this.persistentStyleEl = style;
 
-        const activeSelectors = this.rules
-            .filter(r => r && r.enabled !== false && r.selector && r.id !== this.hoveredRuleId)
-            .map(r => `${normalizeHashedSelector(r.selector)} { display: none !important; }`);
+        let autoDisabledUnsafe = false;
+        const activeSelectors = [];
+
+        for (const r of this.rules) {
+            if (!r || r.enabled === false || !r.selector || r.id === this.hoveredRuleId) continue;
+
+            if (isUnsafeRuleSelector(r.selector)) {
+                r.enabled = false;
+                autoDisabledUnsafe = true;
+                continue;
+            }
+
+            try {
+                const matched = document.querySelectorAll(r.selector);
+                let hitsCoreLayout = false;
+                for (let i = 0; i < matched.length; i++) {
+                    if (isCoreDiscordLayoutElement(matched[i])) {
+                        hitsCoreLayout = true;
+                        break;
+                    }
+                }
+                if (hitsCoreLayout) {
+                    r.enabled = false;
+                    autoDisabledUnsafe = true;
+                    continue;
+                }
+            } catch {
+                continue;
+            }
+
+            activeSelectors.push(`${r.selector} { display: none !important; }`);
+        }
 
         style.textContent = activeSelectors.join("\n");
+
+        if (autoDisabledUnsafe) {
+            try {
+                const serialized = JSON.stringify(this.rules);
+                const storage = getPersistentLocalStorage();
+                if (storage) storage.setItem(STORAGE_KEY, serialized);
+                if (
+                    typeof window !== "undefined" &&
+                    window.Vencord &&
+                    window.Vencord.Settings &&
+                    window.Vencord.Settings.plugins &&
+                    window.Vencord.Settings.plugins.ElementHider
+                ) {
+                    window.Vencord.Settings.plugins.ElementHider.savedRules = JSON.parse(serialized);
+                }
+                idbSaveRules(JSON.parse(serialized));
+            } catch {}
+        }
     },
 
     applyPreviewSelector(selector) {

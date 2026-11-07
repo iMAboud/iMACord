@@ -44,7 +44,6 @@ const PROTECTED_FILES = new Set([
     "src/main/settings.ts",
     "src/main/updater/http.ts",
     "src/main/utils/constants.ts",
-    "src/plugins/_core/noTrack.ts",
     "src/plugins/_core/settings.tsx",
     "src/plugins/amongick/index.ts",
     "src/plugins/betterSettings/index.tsx",
@@ -58,7 +57,6 @@ const PROTECTED_FILES = new Set([
     "src/plugins/vencordToolbox/menu.tsx",
     "src/shared/IpcEvents.ts",
     "src/utils/constants.ts",
-    "src/utils/lazy.ts",
     "src/webpack/common/components.ts",
     "src/webpack/common/utils.ts"
 ].map(p => p.toLowerCase()));

@@ -173,6 +173,8 @@ export function evalUserPlugin(code: string, fileName?: string): Plugin | null {
 }
 
 export function registerUserPlugin(plugin: Plugin, fileName: string, isNewPlugin: boolean = false) {
+    const existingBuiltin = Boolean(Plugins[plugin.name] && !PluginMeta[plugin.name]?.userPlugin);
+
     PluginMeta[plugin.name] = {
         folderName: fileName,
         userPlugin: true
@@ -195,13 +197,17 @@ export function registerUserPlugin(plugin: Plugin, fileName: string, isNewPlugin
         Settings.plugins[plugin.name].enabled = true;
     }
 
-    if (plugin.patches) {
+    if (plugin.patches && (!existingBuiltin || isNewPlugin)) {
         for (const patch of plugin.patches) {
             addPatch(patch, plugin.name);
         }
     }
 
-    if (isNewPlugin) {
+    if (
+        isNewPlugin ||
+        plugin.startAt === StartAt.Init ||
+        (plugin.startAt === StartAt.DOMContentLoaded && typeof document !== "undefined" && document.readyState !== "loading")
+    ) {
         if (isPluginEnabled(plugin.name) && !plugin.started) {
             startPlugin(plugin);
         }
