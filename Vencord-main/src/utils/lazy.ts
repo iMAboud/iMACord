@@ -53,11 +53,23 @@ for (const method of [
     "setPrototypeOf"
 ]) {
     handler[method] =
-        (target: any, ...args: any[]) => Reflect[method](target[SYM_LAZY_GET](), ...args);
+        (target: any, ...args: any[]) => {
+            const v = target[SYM_LAZY_GET]();
+            if (v == null || (typeof v !== "object" && typeof v !== "function")) {
+                if (method === "apply") return undefined;
+                if (method === "has") return false;
+                if (method === "isExtensible") return true;
+                return Reflect[method](target, ...args);
+            }
+            return Reflect[method](v, ...args);
+        };
 }
 
 handler.ownKeys = target => {
     const v = target[SYM_LAZY_GET]();
+    if (v == null || (typeof v !== "object" && typeof v !== "function")) {
+        return [...unconfigurable];
+    }
     const keys = Reflect.ownKeys(v);
     for (const key of unconfigurable) {
         if (!keys.includes(key)) keys.push(key);
@@ -69,7 +81,11 @@ handler.getOwnPropertyDescriptor = (target, p) => {
     if (typeof p === "string" && unconfigurable.includes(p))
         return Reflect.getOwnPropertyDescriptor(target, p);
 
-    const descriptor = Reflect.getOwnPropertyDescriptor(target[SYM_LAZY_GET](), p);
+    const v = target[SYM_LAZY_GET]();
+    if (v == null || (typeof v !== "object" && typeof v !== "function"))
+        return undefined;
+
+    const descriptor = Reflect.getOwnPropertyDescriptor(v, p);
 
     if (descriptor) Object.defineProperty(target, p, descriptor);
     return descriptor;
@@ -115,15 +131,21 @@ export function proxyLazy<T>(factory: () => T, attempts = 5, isChild = false): T
             // `const { meow } = findByPropsLazy("meow");`
             if (!isChild && isSameTick)
                 return proxyLazy(
-                    () => Reflect.get(target[SYM_LAZY_GET](), p, receiver),
+                    () => {
+                        const v = target[SYM_LAZY_GET]();
+                        if (v != null && (typeof v === "object" || typeof v === "function")) {
+                            return Reflect.get(v, p, receiver);
+                        }
+                        return undefined as any;
+                    },
                     attempts,
                     true
                 );
             const lazyTarget = target[SYM_LAZY_GET]();
-            if (typeof lazyTarget === "object" || typeof lazyTarget === "function") {
+            if (lazyTarget != null && (typeof lazyTarget === "object" || typeof lazyTarget === "function")) {
                 return Reflect.get(lazyTarget, p, receiver);
             }
-            throw new Error("proxyLazy called on a primitive value");
+            return undefined;
         }
     }) as any;
 }

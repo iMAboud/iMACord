@@ -16,45 +16,32 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-import ErrorBoundary from "@components/ErrorBoundary";
-import BadgeAPIPlugin from "@plugins/_api/badges";
-import { ComponentType, HTMLProps } from "react";
+import { User } from "discord-types/general";
+import { HTMLProps } from "react";
 
-export const enum BadgePosition {
+import Plugins from "~plugins";
+
+export enum BadgePosition {
     START,
     END
 }
 
 export interface ProfileBadge {
-    /**
-     * Badge id, unused by vencord, required by discord
-     */
-    id: string,
-    /** The tooltip to show on hover. Required for image badges */
-    description?: string;
-    /** Custom component for the badge (tooltip not included) */
-    component?: ComponentType<ProfileBadge & BadgeUserArgs>;
+    /** The tooltip to show on hover */
+    tooltip: string;
     /** The custom image to use */
-    iconSrc?: string;
-    link?: string;
+    image?: string;
     /** Action to perform when you click the badge */
-    onClick?(event: React.MouseEvent, props: ProfileBadge & BadgeUserArgs): void;
-    /** Action to perform when you right click the badge */
-    onContextMenu?(event: React.MouseEvent, props: ProfileBadge & BadgeUserArgs): void;
+    onClick?(): void;
     /** Should the user display this badge? */
     shouldShow?(userInfo: BadgeUserArgs): boolean;
-    /** Optional props (e.g. style) for the badge, ignored for component badges */
+    /** Optional props (e.g. style) for the badge */
     props?: HTMLProps<HTMLImageElement>;
     /** Insert at start or end? */
     position?: BadgePosition;
-    /** The badge name to display, Discord uses this. Required for component badges */
-    key?: string;
 
-    /**
-     * Allows dynamically returning multiple badges.
-     * Must not call hooks
-     */
-    getBadges?(userInfo: BadgeUserArgs): ProfileBadge[];
+    /** The badge name to display. Discord uses this, but we don't. */
+    key?: string;
 }
 
 const Badges = new Set<ProfileBadge>();
@@ -63,8 +50,7 @@ const Badges = new Set<ProfileBadge>();
  * Register a new badge with the Badges API
  * @param badge The badge to register
  */
-export function addProfileBadge(badge: ProfileBadge) {
-    badge.component &&= ErrorBoundary.wrap(badge.component, { noop: true });
+export function addBadge(badge: ProfileBadge) {
     Badges.add(badge);
 }
 
@@ -72,7 +58,7 @@ export function addProfileBadge(badge: ProfileBadge) {
  * Unregister a badge from the Badges API
  * @param badge The badge to remove
  */
-export function removeProfileBadge(badge: ProfileBadge) {
+export function removeBadge(badge: ProfileBadge) {
     return Badges.delete(badge);
 }
 
@@ -80,42 +66,39 @@ export function removeProfileBadge(badge: ProfileBadge) {
  * Inject badges into the profile badges array.
  * You probably don't need to use this.
  */
-export function _getBadges(args: BadgeUserArgs) {
-    const badges = [] as ProfileBadge[];
+export function inject(badgeArray: ProfileBadge[], args: BadgeUserArgs) {
     for (const badge of Badges) {
-        if (badge.shouldShow && !badge.shouldShow(args)) {
-            continue;
-        }
-
-        const b = badge.getBadges
-            ? badge.getBadges(args).map(badge => ({
-                ...args,
-                ...badge,
-                component: badge.component && ErrorBoundary.wrap(badge.component, { noop: true })
-            }))
-            : [{ ...args, ...badge }];
-
-        if (badge.position === BadgePosition.START) {
-            badges.unshift(...b);
-        } else {
-            badges.push(...b);
+        if (!badge.shouldShow || badge.shouldShow(args)) {
+            badge.position === BadgePosition.START
+                ? badgeArray.unshift(badge)
+                : badgeArray.push(badge);
         }
     }
+    (Plugins.BadgeAPI as any).addDonorBadge(badgeArray, args.user.id);
 
-    const donorBadges = BadgeAPIPlugin.getDonorBadges(args.userId);
-    if (donorBadges) {
-        badges.unshift(
-            ...donorBadges.map(badge => ({
-                ...args,
-                ...badge,
-            }))
-        );
-    }
-
-    return badges;
+    return badgeArray;
 }
 
 export interface BadgeUserArgs {
-    userId: string;
-    guildId: string;
+    user: User;
+    profile: Profile;
+    premiumSince: Date;
+    premiumGuildSince?: Date;
+}
+
+interface ConnectedAccount {
+    type: string;
+    id: string;
+    name: string;
+    verified: boolean;
+}
+
+interface Profile {
+    connectedAccounts: ConnectedAccount[];
+    premiumType: number;
+    premiumSince: string;
+    premiumGuildSince?: any;
+    lastFetched: number;
+    profileFetchFailed: boolean;
+    application?: any;
 }

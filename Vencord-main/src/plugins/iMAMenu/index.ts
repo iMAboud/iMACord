@@ -1,49 +1,5 @@
-import { Devs } from "@utils/constants";
 import definePlugin, { OptionType } from "@utils/types";
 import { definePluginSettings } from "@api/Settings";
-
-interface IMARuleActions {
-    visibility?: string;
-    rename?: string;
-    position?: string;
-    menu?: string;
-    separator?: string;
-    icon?: {
-        mode?: string;
-        value?: string;
-        color?: string;
-    };
-    style?: {
-        color?: string;
-        backgroundColor?: string;
-        fontSize?: string;
-        fontWeight?: string;
-        pill?: boolean;
-    };
-}
-
-interface IMARule {
-    id: string;
-    enabled: boolean;
-    target?: string;
-    targetId?: string;
-    matchMode?: string;
-    context?: string;
-    actions: IMARuleActions;
-}
-
-interface IMAMenuDef {
-    id: string;
-    name: string;
-    icon?: string;
-    position?: string;
-    items?: string[];
-}
-
-interface CustomMenuGroupElement extends HTMLDivElement {
-    _itemsToMove?: HTMLElement[];
-}
-
 
 const settings = definePluginSettings({
     rules: {
@@ -74,7 +30,7 @@ const settings = definePluginSettings({
 });
 settings.pluginName = "iMAMenu";
 
-let observer: MutationObserver | null = null;
+let observer = null;
 let isShiftPressed = false;
 let isCtrlPressed = false;
 let isAltPressed = false;
@@ -84,12 +40,12 @@ let rulesFilter = "all";
 let rulesSearchQuery = "";
 let menusSearchQuery = "";
 let inspectorSearchQuery = "";
-let editingRuleId: string | null = null;
-let editingMenuId: string | null = null;
-let inspectedMenuItems: Array<{ text: string; role: string; context: string }> = [];
-let activeFlyout: HTMLElement | null = null;
-let flyoutCloseTimer: any = null;
-const discoveredContexts = new Set<string>(["all", "message", "user", "friend", "channel", "server", "textarea"]);
+let editingRuleId = null;
+let editingMenuId = null;
+let inspectedMenuItems = [];
+let activeFlyout = null;
+let flyoutCloseTimer = null;
+const discoveredContexts = new Set(["all", "message", "user", "friend", "channel", "server", "textarea"]);
 
 const DEFAULT_COLOR_PALETTE = [
     "#f5e0dc", "#f2cdcd", "#f5c2e7", "#cba6f7", "#f38ba8", "#eba0ac", "#fab387", "#f9e2af",
@@ -261,7 +217,7 @@ function normalizeHexColor(hex) {
     return formatLauncherColor(p.hex, p.opacity);
 }
 
-function ruleMatchesContext(ruleContext?: string, currentContext?: string): boolean {
+function ruleMatchesContext(ruleContext, currentContext) {
     if (!ruleContext || ruleContext === "all" || ruleContext === "") return true;
     if (!currentContext || currentContext === "all") return true;
     const scopes = String(ruleContext).split(",").map(s => s.trim().toLowerCase());
@@ -444,7 +400,7 @@ function onKeyUp(e) {
     if (e.key === "Alt") { isAltPressed = false; processMenu(); }
 }
 
-function getStoredRules(): IMARule[] {
+function getStoredRules() {
     try {
         if (!settings.pluginName) settings.pluginName = "iMAMenu";
         const raw = settings.store?.rules;
@@ -520,7 +476,7 @@ function saveStoredRules(rules) {
     } catch {}
 }
 
-function getStoredMenus(): IMAMenuDef[] {
+function getStoredMenus() {
     try {
         if (!settings.pluginName) settings.pluginName = "iMAMenu";
         const raw = settings.store?.menus;
@@ -1602,7 +1558,11 @@ const UI_CSS = `
 .custom-config-group [role="menuitem"] .iconContainerLeft_c1e9c4,
 .ima-custom-menu-group [role="menuitem"] .iconContainerLeft_c1e9c4,
 .custom-config-group [role="menuitem"] .iconContainer_c1e9c4,
-.ima-custom-menu-group [role="menuitem"] .iconContainer_c1e9c4 {
+.ima-custom-menu-group [role="menuitem"] .iconContainer_c1e9c4,
+.custom-config-group [role="menuitem"] [class*="iconContainerLeft_"],
+.ima-custom-menu-group [role="menuitem"] [class*="iconContainerLeft_"],
+.custom-config-group [role="menuitem"] [class*="iconContainer_"],
+.ima-custom-menu-group [role="menuitem"] [class*="iconContainer_"] {
     display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
@@ -1613,7 +1573,9 @@ const UI_CSS = `
 }
 
 .custom-config-group [role="menuitem"] .label_c1e9c4,
-.ima-custom-menu-group [role="menuitem"] .label_c1e9c4 {
+.ima-custom-menu-group [role="menuitem"] .label_c1e9c4,
+.custom-config-group [role="menuitem"] [class*="label_"],
+.ima-custom-menu-group [role="menuitem"] [class*="label_"] {
     display: flex !important;
     flex-direction: row !important;
     align-items: center !important;
@@ -1767,25 +1729,25 @@ function openColorPickerDialog({ initialColor, title = "Color Palette", onApply 
 
     const closeDialog = () => overlay.remove();
 
-    const grid = overlay.querySelector("#ima-cp-palette-grid") as HTMLElement;
-    const recentGrid = overlay.querySelector("#ima-cp-recent-grid") as HTMLElement;
-    const previewColor = overlay.querySelector("#ima-cp-preview-color") as HTMLElement;
-    const hexInput = overlay.querySelector("#ima-cp-hex-input") as HTMLInputElement;
-    const eyedropperBtn = overlay.querySelector("#ima-cp-eyedropper-btn") as HTMLButtonElement | null;
-    const sliderHue = overlay.querySelector("#ima-cp-slider-hue") as HTMLInputElement;
-    const sliderSat = overlay.querySelector("#ima-cp-slider-sat") as HTMLInputElement;
-    const sliderVal = overlay.querySelector("#ima-cp-slider-val") as HTMLInputElement;
-    const sliderOpa = overlay.querySelector("#ima-cp-slider-opa") as HTMLInputElement;
-    const valHue = overlay.querySelector("#ima-cp-val-hue") as HTMLElement;
-    const valSat = overlay.querySelector("#ima-cp-val-sat") as HTMLElement;
-    const valVal = overlay.querySelector("#ima-cp-val-val") as HTMLElement;
-    const valOpa = overlay.querySelector("#ima-cp-val-opa") as HTMLElement;
-    const lblOpa = overlay.querySelector("#ima-cp-lbl-opacity") as HTMLElement;
-    const defaultChk = overlay.querySelector("#ima-cp-default-chk") as HTMLInputElement;
-    const dimOverlay = overlay.querySelector("#ima-cp-dim-overlay") as HTMLElement;
-    const btnCancel = overlay.querySelector("#ima-cp-btn-cancel") as HTMLButtonElement;
-    const btnApply = overlay.querySelector("#ima-cp-btn-apply") as HTMLButtonElement;
-    const closeX = overlay.querySelector("#ima-cp-close-x") as HTMLElement;
+    const grid = overlay.querySelector("#ima-cp-palette-grid");
+    const recentGrid = overlay.querySelector("#ima-cp-recent-grid");
+    const previewColor = overlay.querySelector("#ima-cp-preview-color");
+    const hexInput = overlay.querySelector("#ima-cp-hex-input");
+    const eyedropperBtn = overlay.querySelector("#ima-cp-eyedropper-btn");
+    const sliderHue = overlay.querySelector("#ima-cp-slider-hue");
+    const sliderSat = overlay.querySelector("#ima-cp-slider-sat");
+    const sliderVal = overlay.querySelector("#ima-cp-slider-val");
+    const sliderOpa = overlay.querySelector("#ima-cp-slider-opa");
+    const valHue = overlay.querySelector("#ima-cp-val-hue");
+    const valSat = overlay.querySelector("#ima-cp-val-sat");
+    const valVal = overlay.querySelector("#ima-cp-val-val");
+    const valOpa = overlay.querySelector("#ima-cp-val-opa");
+    const lblOpa = overlay.querySelector("#ima-cp-lbl-opacity");
+    const defaultChk = overlay.querySelector("#ima-cp-default-chk");
+    const dimOverlay = overlay.querySelector("#ima-cp-dim-overlay");
+    const btnCancel = overlay.querySelector("#ima-cp-btn-cancel");
+    const btnApply = overlay.querySelector("#ima-cp-btn-apply");
+    const closeX = overlay.querySelector("#ima-cp-close-x");
 
     const updateSliderFill = (slider, min, max, val) => {
         const pct = Math.max(0, Math.min(100, ((val - min) / (max - min)) * 100));
@@ -1805,10 +1767,10 @@ function openColorPickerDialog({ initialColor, title = "Color Palette", onApply 
         valOpa.textContent = `${currentOpacity}%`;
         lblOpa.textContent = `Opacity (${currentOpacity}%)`;
 
-        sliderHue.value = String(h);
-        sliderSat.value = String(s);
-        sliderVal.value = String(v);
-        sliderOpa.value = String(currentOpacity);
+        sliderHue.value = h;
+        sliderSat.value = s;
+        sliderVal.value = v;
+        sliderOpa.value = currentOpacity;
 
         updateSliderFill(sliderHue, 0, 359, h);
         updateSliderFill(sliderSat, 0, 255, s);
@@ -1816,7 +1778,7 @@ function openColorPickerDialog({ initialColor, title = "Color Palette", onApply 
         updateSliderFill(sliderOpa, 1, 100, currentOpacity);
 
         grid.querySelectorAll(".ima-cp-swatch").forEach(sw => {
-            const c = sw.getAttribute("data-color") || "";
+            const c = sw.getAttribute("data-color");
             sw.classList.toggle("active", c.toLowerCase() === currentColorHex.toLowerCase());
         });
     };
@@ -1852,7 +1814,7 @@ function openColorPickerDialog({ initialColor, title = "Color Palette", onApply 
     const renderRecent = () => {
         recentGrid.innerHTML = "";
         const recents = getRecentColors();
-        const header = overlay.querySelector("#ima-cp-recent-header") as HTMLElement | null;
+        const header = overlay.querySelector("#ima-cp-recent-header");
         if (recents.length === 0) {
             if (header) header.style.display = "none";
             recentGrid.style.display = "none";
@@ -1873,27 +1835,27 @@ function openColorPickerDialog({ initialColor, title = "Color Palette", onApply 
     };
     renderRecent();
 
-    sliderHue.addEventListener("input", (e: Event) => {
-        h = parseInt((e.target as HTMLInputElement).value, 10);
+    sliderHue.addEventListener("input", (e) => {
+        h = parseInt(e.target.value, 10);
         if (s > 0) lastHue = h;
         updateUI(true);
     });
-    sliderSat.addEventListener("input", (e: Event) => {
-        s = parseInt((e.target as HTMLInputElement).value, 10);
+    sliderSat.addEventListener("input", (e) => {
+        s = parseInt(e.target.value, 10);
         if (s > 0 && lastHue !== -1) h = lastHue;
         updateUI(true);
     });
-    sliderVal.addEventListener("input", (e: Event) => {
-        v = parseInt((e.target as HTMLInputElement).value, 10);
+    sliderVal.addEventListener("input", (e) => {
+        v = parseInt(e.target.value, 10);
         updateUI(true);
     });
-    sliderOpa.addEventListener("input", (e: Event) => {
-        currentOpacity = parseInt((e.target as HTMLInputElement).value, 10);
+    sliderOpa.addEventListener("input", (e) => {
+        currentOpacity = parseInt(e.target.value, 10);
         updateUI(false);
     });
 
-    hexInput.addEventListener("input", (e: Event) => {
-        const val = (e.target as HTMLInputElement).value.trim();
+    hexInput.addEventListener("input", (e) => {
+        const val = e.target.value.trim();
         const rgb = hexToRgb(val);
         if (rgb) {
             const hsv = rgbToHsv(rgb.r, rgb.g, rgb.b);
@@ -1906,7 +1868,7 @@ function openColorPickerDialog({ initialColor, title = "Color Palette", onApply 
     });
 
     if (window.EyeDropper) {
-        eyedropperBtn?.addEventListener("click", async () => {
+        eyedropperBtn.addEventListener("click", async () => {
             try {
                 const ed = new window.EyeDropper();
                 const res = await ed.open();
@@ -1915,7 +1877,7 @@ function openColorPickerDialog({ initialColor, title = "Color Palette", onApply 
                 }
             } catch (_) {}
         });
-    } else if (eyedropperBtn) {
+    } else {
         eyedropperBtn.style.opacity = "0.4";
         eyedropperBtn.title = "Screen EyeDropper not supported in this browser environment";
     }
@@ -1925,7 +1887,7 @@ function openColorPickerDialog({ initialColor, title = "Color Palette", onApply 
         dimOverlay.style.display = isDefault ? "flex" : "none";
     };
 
-    defaultChk.addEventListener("change", (e) => toggleDefault((e.target as HTMLInputElement).checked));
+    defaultChk.addEventListener("change", (e) => toggleDefault(e.target.checked));
     dimOverlay.addEventListener("click", () => {
         defaultChk.checked = false;
         toggleDefault(false);
@@ -1957,7 +1919,7 @@ function renderRulesCards(cardsContainer, container) {
 
     const filtered = rules.filter(rule => {
         if (rulesFilter === "hidden" && rule.actions.visibility !== "hide") return false;
-        if (rulesFilter === "keys" && !["shift", "ctrl", "alt"].includes(rule.actions.visibility || "")) return false;
+        if (rulesFilter === "keys" && !["shift", "ctrl", "alt"].includes(rule.actions.visibility)) return false;
         if (rulesFilter === "renamed" && !rule.actions.rename) return false;
         if (rulesFilter === "styled" && !rule.actions.style?.color && !rule.actions.style?.backgroundColor) return false;
         if (rulesFilter === "moved" && (!rule.actions.position || rule.actions.position === "default")) return false;
@@ -1994,7 +1956,7 @@ function renderRulesCards(cardsContainer, container) {
         const card = document.createElement("div");
         card.className = "ima-rule-card";
 
-        const badges: string[] = [];
+        const badges = [];
         if (rule.actions.visibility === "hide") badges.push(`<span class="ima-action-badge badge-hidden">Hidden</span>`);
         else if (rule.actions.visibility === "shift") badges.push(`<span class="ima-action-badge badge-shift">Shift + Click</span>`);
         else if (rule.actions.visibility === "ctrl") badges.push(`<span class="ima-action-badge badge-ctrl">Ctrl + Click</span>`);
@@ -2056,17 +2018,17 @@ function renderRulesCards(cardsContainer, container) {
             </div>
         `;
 
-        (card.querySelector(".ima-toggle") as HTMLInputElement)?.addEventListener("change", (e: Event) => {
-            rule.enabled = (e.target as HTMLInputElement).checked;
+        card.querySelector(".ima-toggle").addEventListener("change", (e) => {
+            rule.enabled = e.target.checked;
             saveStoredRules(rules);
         });
 
-        card.querySelector(".edit")?.addEventListener("click", () => {
+        card.querySelector(".edit").addEventListener("click", () => {
             editingRuleId = rule.id;
             switchTab("builder");
         });
 
-        card.querySelector(".duplicate")?.addEventListener("click", () => {
+        card.querySelector(".duplicate").addEventListener("click", () => {
             const clone = JSON.parse(JSON.stringify(rule));
             clone.id = "rule_" + Math.random().toString(36).substring(2, 9);
             clone.target += " (Copy)";
@@ -2075,7 +2037,7 @@ function renderRulesCards(cardsContainer, container) {
             renderRulesCards(cardsContainer, container);
         });
 
-        card.querySelector(".delete")?.addEventListener("click", () => {
+        card.querySelector(".delete").addEventListener("click", () => {
             const idx = rules.findIndex(r => r.id === rule.id);
             if (idx !== -1) {
                 rules.splice(idx, 1);
@@ -2156,10 +2118,10 @@ function openGlyphBrowser(onSelect) {
     document.body.appendChild(modal);
 
     const close = () => modal.remove();
-    modal.querySelector("#ima-glyph-close")?.addEventListener("click", close);
+    modal.querySelector("#ima-glyph-close").addEventListener("click", close);
 
-    const container = modal.querySelector("#ima-glyph-container") as HTMLElement;
-    const search = modal.querySelector("#ima-glyph-search") as HTMLInputElement;
+    const container = modal.querySelector("#ima-glyph-container");
+    const search = modal.querySelector("#ima-glyph-search");
 
     const renderIcons = (q = "") => {
         container.innerHTML = "";
@@ -2182,7 +2144,7 @@ function openGlyphBrowser(onSelect) {
     };
 
     renderIcons();
-    search.addEventListener("input", (e: Event) => renderIcons((e.target as HTMLInputElement).value));
+    search.addEventListener("input", (e) => renderIcons(e.target.value));
 }
 
 function renderBuilderTab(container) {
@@ -2425,7 +2387,7 @@ function renderBuilderTab(container) {
     iconPreview.addEventListener("click", () => openGlyphBrowser(updateIconDisplay));
 
     iconValInp.addEventListener("input", (e) => {
-        const val = (e.target as HTMLInputElement).value.trim().toLowerCase();
+        const val = e.target.value.trim().toLowerCase();
         const activeColor = colorToCss(currentColorIcon || currentColorText) || "#ea999c";
         if (!val || val === "none") {
             iconPreview.innerHTML = '<span style="color: #8c92a4; font-size: 10px; font-weight: 600;">NONE</span>';
@@ -2496,7 +2458,7 @@ function renderBuilderTab(container) {
 
     chipIcon.addEventListener("click", () => {
         openColorPickerDialog({
-            initialColor: currentColorIcon || currentColorText || "",
+            initialColor: currentColorIcon || currentColorText,
             title: "Icon Color",
             onApply: (col) => {
                 currentColorIcon = (col === "default") ? "" : col;
@@ -2665,8 +2627,8 @@ function renderMenusTab(container) {
             </div>
         `;
 
-        const addInput = card.querySelector(".add-item-input") as HTMLInputElement;
-        const addBtn = card.querySelector(".add-item-btn") as HTMLButtonElement;
+        const addInput = card.querySelector(".add-item-input");
+        const addBtn = card.querySelector(".add-item-btn");
 
         const addItem = () => {
             const val = addInput.value.trim();
@@ -2680,7 +2642,7 @@ function renderMenusTab(container) {
             addInput.value = "";
         };
 
-        addInput?.addEventListener("keydown", (e: KeyboardEvent) => {
+        addInput.addEventListener("keydown", (e) => {
             if (e.key === "Enter") {
                 e.preventDefault();
                 addItem();
@@ -2691,21 +2653,18 @@ function renderMenusTab(container) {
         card.querySelectorAll(".ima-del-item-chip").forEach(btn => {
             btn.addEventListener("click", (e) => {
                 e.stopPropagation();
-                const idxStr = btn.getAttribute("data-idx");
-                if (idxStr !== null) {
-                    const idx = parseInt(idxStr, 10);
-                    (menu.items = menu.items || []).splice(idx, 1);
-                }
+                const idx = parseInt(btn.getAttribute("data-idx"));
+                menu.items.splice(idx, 1);
                 saveStoredMenus(menus);
                 renderMenusTab(container);
             });
         });
 
-        card.querySelector(".edit-menu")?.addEventListener("click", () => {
+        card.querySelector(".edit-menu").addEventListener("click", () => {
             openMenuEditModal(menu, () => renderMenusTab(container));
         });
 
-        card.querySelector(".delete-menu")?.addEventListener("click", () => {
+        card.querySelector(".delete-menu").addEventListener("click", () => {
             const idx = menus.findIndex(m => m.id === menu.id);
             if (idx !== -1) {
                 menus.splice(idx, 1);
@@ -2783,42 +2742,40 @@ function openMenuEditModal(existing, onSaved) {
     document.body.appendChild(modal);
 
     const close = () => modal.remove();
-    modal.querySelector("#ima-menu-dlg-close")?.addEventListener("click", close);
-    modal.querySelector("#ima-menu-cancel")?.addEventListener("click", close);
+    modal.querySelector("#ima-menu-dlg-close").addEventListener("click", close);
+    modal.querySelector("#ima-menu-cancel").addEventListener("click", close);
 
-    const iconKey = modal.querySelector("#ima-menu-icon-key") as HTMLInputElement | null;
-    const iconPrev = modal.querySelector("#ima-menu-icon-prev") as HTMLElement | null;
-    const browse = modal.querySelector("#ima-menu-browse-icon") as HTMLElement | null;
+    const iconKey = modal.querySelector("#ima-menu-icon-key");
+    const iconPrev = modal.querySelector("#ima-menu-icon-prev");
+    const browse = modal.querySelector("#ima-menu-browse-icon");
 
-    const setIcon = (k: string) => {
+    const setIcon = (k) => {
         const key = (k || "").trim().toLowerCase();
         if (!key || key === "none") {
-            if (iconKey) iconKey.value = "";
-            if (iconPrev) iconPrev.innerHTML = '<span style="color: #8c92a4; font-size: 10px; font-weight: 600;">NONE</span>';
+            iconKey.value = "";
+            iconPrev.innerHTML = '<span style="color: #8c92a4; font-size: 10px; font-weight: 600;">NONE</span>';
         } else {
-            if (iconKey) iconKey.value = key;
-            if (iconPrev) iconPrev.innerHTML = getSvgMarkup(key, "#ea999c", 18);
+            iconKey.value = key;
+            iconPrev.innerHTML = getSvgMarkup(key, "#ea999c", 18);
         }
     };
 
-    iconKey?.addEventListener("input", (e: Event) => setIcon((e.target as HTMLInputElement).value));
-    browse?.addEventListener("click", () => openGlyphBrowser(setIcon));
-    iconPrev?.addEventListener("click", () => openGlyphBrowser(setIcon));
+    iconKey.addEventListener("input", (e) => setIcon(e.target.value));
+    browse.addEventListener("click", () => openGlyphBrowser(setIcon));
+    iconPrev.addEventListener("click", () => openGlyphBrowser(setIcon));
 
-    modal.querySelector("#ima-menu-save")?.addEventListener("click", () => {
-        const nameInput = modal.querySelector("#ima-menu-name") as HTMLInputElement | null;
-        const name = (nameInput?.value || "").trim();
+    modal.querySelector("#ima-menu-save").addEventListener("click", () => {
+        const name = modal.querySelector("#ima-menu-name").value.trim();
         if (!name) {
-            nameInput?.focus();
+            modal.querySelector("#ima-menu-name").focus();
             return;
         }
 
         const menus = getStoredMenus();
-        const iconVal = (iconKey?.value || "").trim().toLowerCase();
+        const iconVal = iconKey.value.trim().toLowerCase();
         data.name = name;
         data.icon = (!iconVal || iconVal === "none") ? "none" : iconVal;
-        const posSelect = modal.querySelector("#ima-menu-pos") as HTMLSelectElement | null;
-        data.position = posSelect?.value || "default";
+        data.position = modal.querySelector("#ima-menu-pos").value;
 
         if (existing) {
             const idx = menus.findIndex(m => m.id === existing.id);
@@ -2880,14 +2837,14 @@ function renderInspectorRows(tbody, container) {
             <td style="padding: 8px; border-bottom: 1px solid rgba(255, 255, 255, 0.04);"><span class="ima-match-badge">${item.role}</span></td>
             <td style="padding: 8px; border-bottom: 1px solid rgba(255, 255, 255, 0.04); white-space: nowrap;">
                 <button class="ima-inspector-hide-btn ima-btn-secondary" style="padding: 4px 10px; font-size: 11px; margin-right: 6px;">${hidden ? 'Unhide' : 'Hide'}</button>
-                <button class="ima-inspector-create-btn ima-btn-primary" style="padding: 4px 10px; font-size: 11px;">${rules.some(r => (r.target || "").toLowerCase() === item.text.toLowerCase() && ruleMatchesContext(r.context, item.context)) ? 'Edit Rule' : '+ Create Rule'}</button>
+                <button class="ima-inspector-create-btn ima-btn-primary" style="padding: 4px 10px; font-size: 11px;">${rules.some(r => r.target.toLowerCase() === item.text.toLowerCase() && ruleMatchesContext(r.context, item.context)) ? 'Edit Rule' : '+ Create Rule'}</button>
             </td>
         `;
 
-        tr.querySelector(".ima-inspector-hide-btn")?.addEventListener("click", () => {
+        tr.querySelector(".ima-inspector-hide-btn").addEventListener("click", () => {
             let curRules = getStoredRules();
             if (hidden) {
-                const exactRule = curRules.find(r => r.enabled && r.actions?.visibility === "hide" && (r.target || "").toLowerCase() === item.text.toLowerCase() && r.matchMode === "exact");
+                const exactRule = curRules.find(r => r.enabled && r.actions?.visibility === "hide" && r.target.toLowerCase() === item.text.toLowerCase() && r.matchMode === "exact");
                 if (exactRule) {
                     exactRule.actions.visibility = "normal";
                 } else {
@@ -2898,7 +2855,7 @@ function renderInspectorRows(tbody, container) {
                     });
                 }
             } else {
-                const existing = curRules.find(r => (r.target || "").toLowerCase() === item.text.toLowerCase() && r.matchMode === "exact" && ruleMatchesContext(r.context, item.context));
+                const existing = curRules.find(r => r.target.toLowerCase() === item.text.toLowerCase() && r.matchMode === "exact" && ruleMatchesContext(r.context, item.context));
                 if (existing) {
                     existing.enabled = true;
                     existing.actions = existing.actions || {};
@@ -2927,10 +2884,10 @@ function renderInspectorRows(tbody, container) {
             renderInspectorRows(tbody, container);
         });
 
-        tr.querySelector(".ima-inspector-create-btn")?.addEventListener("click", () => {
+        tr.querySelector(".ima-inspector-create-btn").addEventListener("click", () => {
             const curRules = getStoredRules();
             const existing = curRules.find(r => 
-                ((r.target || "").toLowerCase() === item.text.toLowerCase() || 
+                (r.target.toLowerCase() === item.text.toLowerCase() || 
                  (r.actions?.rename && r.actions.rename.toLowerCase() === item.text.toLowerCase())) &&
                 ruleMatchesContext(r.context, item.context)
             );
@@ -2941,9 +2898,9 @@ function renderInspectorRows(tbody, container) {
             }
             switchTab("builder");
             setTimeout(() => {
-                const targetInp = document.getElementById("ima-builder-target") as HTMLInputElement | null;
+                const targetInp = document.getElementById("ima-builder-target");
                 if (targetInp && !editingRuleId) targetInp.value = item.text;
-                const ctxInput = document.getElementById("ima-builder-context") as HTMLInputElement | null;
+                const ctxInput = document.getElementById("ima-builder-context");
                 if (ctxInput && !editingRuleId && item.context && item.context !== "all") {
                     ctxInput.value = item.context;
                     const chips = document.getElementById("ima-builder-context-chips");
@@ -3012,7 +2969,7 @@ function switchTab(tab) {
     });
 
     const content = modal.querySelector(".ima-modal-content");
-    if (content) content.innerHTML = "";
+    content.innerHTML = "";
 
     if (tab === "rules") renderRulesTab(content);
     else if (tab === "builder") renderBuilderTab(content);
@@ -3072,7 +3029,7 @@ function showConfigFloatingWindow() {
 
     document.body.appendChild(modal);
 
-    modal.querySelector("#ima-modal-close")?.addEventListener("click", () => modal.remove());
+    modal.querySelector("#ima-modal-close").addEventListener("click", () => modal.remove());
 
     modal.querySelectorAll(".ima-pill-tab").forEach(tabBtn => {
         tabBtn.addEventListener("click", () => {
@@ -3080,22 +3037,21 @@ function showConfigFloatingWindow() {
         });
     });
 
-    const header = modal.querySelector("#ima-header-drag") as HTMLElement | null;
+    const header = modal.querySelector("#ima-header-drag");
     let isDragging = false;
     let offsetX = 0;
     let offsetY = 0;
 
-    header?.addEventListener("mousedown", (e: MouseEvent) => {
-        const t = e.target as HTMLElement | null;
-        if (t?.closest?.("button") || t?.closest?.("input")) return;
+    header.addEventListener("mousedown", (e) => {
+        if (e.target.closest("button") || e.target.closest("input")) return;
         isDragging = true;
-        if (header) (header as HTMLElement).style.cursor = "grabbing";
+        header.style.cursor = "grabbing";
         const rect = modal.getBoundingClientRect();
         offsetX = e.clientX - rect.left;
         offsetY = e.clientY - rect.top;
     });
 
-    window.addEventListener("mousemove", (e: MouseEvent) => {
+    window.addEventListener("mousemove", (e) => {
         if (!isDragging) return;
         modal.style.transform = "none";
         modal.style.left = `${Math.max(10, e.clientX - offsetX)}px`;
@@ -3104,7 +3060,7 @@ function showConfigFloatingWindow() {
 
     window.addEventListener("mouseup", () => {
         isDragging = false;
-        if (header) (header as HTMLElement).style.cursor = "grab";
+        header.style.cursor = "grab";
     });
 
     switchTab(activeTab);
@@ -3117,7 +3073,7 @@ function clearOtherMenuFocus(currentEl) {
     items.forEach(el => {
         if (el !== currentEl && !currentEl.contains(el)) {
             Array.from(el.classList).forEach(cls => {
-                if ((cls as string).includes("focused")) {
+                if (cls.includes("focused")) {
                     el.classList.remove(cls);
                 }
             });
@@ -3125,9 +3081,9 @@ function clearOtherMenuFocus(currentEl) {
     });
 }
 
-function getSampleMenuItem(menuEl: HTMLElement | Document | null): HTMLElement | null {
-    const root = (menuEl || document) as HTMLElement | Document;
-    const candidates = Array.from(root.querySelectorAll('div[role="menu"] [role="menuitem"]:not(.custom-config-group *):not(.ima-custom-menu-group *)')) as HTMLElement[];
+function getSampleMenuItem(menuEl) {
+    const root = menuEl || document;
+    const candidates = Array.from(root.querySelectorAll('div[role="menu"] [role="menuitem"]:not(.custom-config-group *):not(.ima-custom-menu-group *)'));
     if (candidates.length === 0) return null;
     const nonSlider = candidates.find(el => {
         const isSlider = el.querySelector('[class*="slider"], [class*="Slider"], input[type="range"]') || el.className.toLowerCase().includes("slider");
@@ -3163,7 +3119,7 @@ function createConfigItem(menuEl) {
     }
     item.setAttribute("role", "menuitem");
     item.setAttribute("tabindex", "-1");
-    (item as HTMLElement).style.cssText = "display: flex !important; flex-direction: row !important; align-items: center !important; justify-content: flex-start !important; flex-wrap: nowrap !important; box-sizing: border-box !important; min-height: 32px !important; cursor: pointer !important; width: 100% !important;";
+    item.style.cssText = "display: flex !important; flex-direction: row !important; align-items: center !important; justify-content: flex-start !important; flex-wrap: nowrap !important; box-sizing: border-box !important; min-height: 32px !important; cursor: pointer !important; width: 100% !important;";
 
     item.innerHTML = `
         <div class="iconContainerLeft_c1e9c4 iconContainer_c1e9c4" style="margin-right: 8px; display: inline-flex !important; align-items: center !important; justify-content: center !important; flex-shrink: 0 !important; width: 18px !important; height: 18px !important;">
@@ -3178,7 +3134,7 @@ function createConfigItem(menuEl) {
 
     item.addEventListener("mouseenter", () => {
         clearOtherMenuFocus(item);
-        const scroller = item.closest('div[class*="scroller_"]') as HTMLElement | null;
+        const scroller = item.closest('div[class*="scroller_"]');
         const s = getSampleMenuItem(scroller);
         const dynFocusedClass = s ? Array.from(s.classList).find(c => c.startsWith("colorDefault_"))?.replace("colorDefault_", "focused_") : "focused_c1e9c4";
         if (dynFocusedClass) item.classList.add(dynFocusedClass);
@@ -3200,7 +3156,7 @@ function createConfigItem(menuEl) {
     return group;
 }
 
-let currentFlyoutCloseFn: (() => void) | null = null;
+let currentFlyoutCloseFn = null;
 
 function closeActiveFlyout() {
     if (flyoutCloseTimer) {
@@ -3312,8 +3268,8 @@ function triggerItemAction(originalNode) {
     }
 }
 
-function createSubmenuTrigger(menuDef: IMAMenuDef, itemsToMove: HTMLElement[], menuEl: HTMLElement | null) {
-    const group = document.createElement("div") as CustomMenuGroupElement;
+function createSubmenuTrigger(menuDef, itemsToMove, menuEl) {
+    const group = document.createElement("div");
     group.setAttribute("role", "group");
     group.className = "ima-custom-menu-group";
     group.setAttribute("data-menu-id", menuDef.id);
@@ -3334,7 +3290,7 @@ function createSubmenuTrigger(menuDef: IMAMenuDef, itemsToMove: HTMLElement[], m
     item.setAttribute("role", "menuitem");
     item.setAttribute("aria-haspopup", "true");
     item.setAttribute("tabindex", "-1");
-    (item as HTMLElement).style.cssText = "display: flex !important; flex-direction: row !important; align-items: center !important; justify-content: flex-start !important; flex-wrap: nowrap !important; box-sizing: border-box !important; min-height: 32px !important; cursor: pointer !important; width: 100% !important; padding: 6px 8px !important;";
+    item.style.cssText = "display: flex !important; flex-direction: row !important; align-items: center !important; justify-content: flex-start !important; flex-wrap: nowrap !important; box-sizing: border-box !important; min-height: 32px !important; cursor: pointer !important; width: 100% !important; padding: 6px 8px !important;";
 
     const iconHtml = menuDef.icon === "none" ? "" : `
         <div class="iconContainerLeft_c1e9c4 iconContainer_c1e9c4" style="margin-right: 8px; display: inline-flex !important; align-items: center !important; justify-content: center !important; flex-shrink: 0 !important; width: 18px !important; height: 18px !important;">
@@ -3363,7 +3319,7 @@ function createSubmenuTrigger(menuDef: IMAMenuDef, itemsToMove: HTMLElement[], m
             currentFlyoutCloseFn = null;
         }
         Array.from(item.classList).forEach(c => {
-            if ((c as string).includes("focused")) item.classList.remove(c);
+            if (c.includes("focused")) item.classList.remove(c);
         });
     };
 
@@ -3376,7 +3332,7 @@ function createSubmenuTrigger(menuDef: IMAMenuDef, itemsToMove: HTMLElement[], m
 
         closeActiveFlyout();
 
-        const currentItems = (group as CustomMenuGroupElement)._itemsToMove || itemsToMove;
+        const currentItems = group._itemsToMove || itemsToMove;
         if (!currentItems || currentItems.length === 0) return;
 
         const flyout = document.createElement("div");
@@ -3400,7 +3356,7 @@ function createSubmenuTrigger(menuDef: IMAMenuDef, itemsToMove: HTMLElement[], m
         const flyoutScroller = document.createElement("div");
         flyoutScroller.className = scrollerClass;
         flyoutScroller.setAttribute("role", "group");
-        (flyoutScroller as HTMLElement).style.cssText = "overflow: visible !important; max-height: none !important; height: auto !important;";
+        flyoutScroller.style.cssText = "overflow: visible !important; max-height: none !important; height: auto !important;";
         flyout.appendChild(flyoutScroller);
 
         currentItems.forEach(node => {
@@ -3433,12 +3389,12 @@ function createSubmenuTrigger(menuDef: IMAMenuDef, itemsToMove: HTMLElement[], m
 
             flyItem.addEventListener("mouseleave", () => {
                 Array.from(flyItem.classList).forEach(c => {
-                    if ((c as string).includes("focused")) flyItem.classList.remove(c);
+                    if (c.includes("focused")) flyItem.classList.remove(c);
                 });
             });
 
             // Action execution: dispatches to original node and dismisses context menu
-            flyItem.addEventListener("click", (e: MouseEvent) => {
+            flyItem.addEventListener("click", (e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 closeFlyout();
@@ -3449,7 +3405,7 @@ function createSubmenuTrigger(menuDef: IMAMenuDef, itemsToMove: HTMLElement[], m
             });
 
             // Context menu to configure rule on this item
-            flyItem.addEventListener("contextmenu", (e: MouseEvent) => {
+            flyItem.addEventListener("contextmenu", (e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 closeFlyout();
@@ -3469,7 +3425,7 @@ function createSubmenuTrigger(menuDef: IMAMenuDef, itemsToMove: HTMLElement[], m
         currentFlyoutCloseFn = closeFlyout;
 
         const rect = item.getBoundingClientRect();
-        const menuRect = menuEl ? (menuEl as HTMLElement).getBoundingClientRect() : rect;
+        const menuRect = menuEl ? menuEl.getBoundingClientRect() : rect;
         const baseRight = Math.max(rect.right, menuRect.right);
         const baseLeft = Math.min(rect.left, menuRect.left);
 
@@ -3503,8 +3459,8 @@ function createSubmenuTrigger(menuDef: IMAMenuDef, itemsToMove: HTMLElement[], m
             }
         });
 
-        flyout.addEventListener("mouseleave", (e: MouseEvent) => {
-            const related = e.relatedTarget as HTMLElement | null;
+        flyout.addEventListener("mouseleave", (e) => {
+            const related = e.relatedTarget;
             if (related && (item.contains(related) || group.contains(related))) {
                 return;
             }
@@ -3534,15 +3490,15 @@ function createSubmenuTrigger(menuDef: IMAMenuDef, itemsToMove: HTMLElement[], m
         openFlyout();
     });
 
-    item.addEventListener("mouseleave", (e: MouseEvent) => {
-        const related = e.relatedTarget as HTMLElement | null;
+    item.addEventListener("mouseleave", (e) => {
+        const related = e.relatedTarget;
         if (activeFlyout && related && activeFlyout.contains(related)) {
             return;
         }
         flyoutCloseTimer = setTimeout(() => {
             if (!activeFlyout || activeFlyout.getAttribute("data-menu-id") !== menuDef.id) {
                 Array.from(item.classList).forEach(c => {
-                    if ((c as string).includes("focused")) item.classList.remove(c);
+                    if (c.includes("focused")) item.classList.remove(c);
                 });
             }
             closeFlyout();
@@ -3553,7 +3509,7 @@ function createSubmenuTrigger(menuDef: IMAMenuDef, itemsToMove: HTMLElement[], m
     return group;
 }
 
-function matchesTarget(itemText: string, target?: string, mode?: string): boolean {
+function matchesTarget(itemText, target, mode) {
     const t = (itemText || "").trim().toLowerCase();
     const q = (target || "").trim().toLowerCase();
     if (!t || !q) return false;
@@ -3563,7 +3519,7 @@ function matchesTarget(itemText: string, target?: string, mode?: string): boolea
     if (mode === "ends") return t.endsWith(q);
     if (mode === "regex") {
         try {
-            return new RegExp(target || "", "i").test(itemText);
+            return new RegExp(target, "i").test(itemText);
         } catch {
             return false;
         }
@@ -3571,8 +3527,8 @@ function matchesTarget(itemText: string, target?: string, mode?: string): boolea
     return t.includes(q);
 }
 
-function findBestMatchingRule(rules: IMARule[], rawText: string, itemId?: string, menuContext?: string): IMARule | null {
-    let bestRule: IMARule | null = null;
+function findBestMatchingRule(rules, rawText, itemId, menuContext) {
+    let bestRule = null;
     let bestScore = -1;
 
     for (const rule of rules) {
@@ -3587,7 +3543,7 @@ function findBestMatchingRule(rules: IMARule[], rawText: string, itemId?: string
         }
 
         const hasTargetId = Boolean(rule.targetId && rule.targetId.trim());
-        const wantId = hasTargetId && rule.targetId ? rule.targetId.trim().toLowerCase() : "";
+        const wantId = hasTargetId ? rule.targetId.trim().toLowerCase() : "";
         const idMatches = hasTargetId && itemId && (
             itemId.toLowerCase() === wantId ||
             itemId.toLowerCase().endsWith(wantId) ||
@@ -3668,7 +3624,7 @@ function getItemText(item) {
 }
 
 let isProcessingMenu = false;
-let processMenuTimer: any = null;
+let processMenuTimer = null;
 let isMutatingOwnDOM = false;
 
 function scheduleProcessMenu(delay = 0) {
@@ -3747,7 +3703,7 @@ function _doProcessMenu() {
             '[role="menuitem"]:not(.custom-config-group *):not(.ima-custom-menu-group *), [role="menuitemcheckbox"], [role="menuitemradio"]'
         ));
 
-        const menuBuckets: Record<string, HTMLElement[]> = {};
+        const menuBuckets = {};
         menus.forEach(m => { menuBuckets[m.id] = []; });
 
         for (const item of menuItems) {
@@ -3761,7 +3717,7 @@ function _doProcessMenu() {
                 if (textLower === "focus this person" || textLower.includes("focus this person") ||
                     idLower.includes("focus-voice-user") || idLower.includes("voice-user-focus") ||
                     idLower.includes("user-focus") || idLower.includes("focusvoiceuser")) {
-                    (item as HTMLElement).style.setProperty("display", "none", "important");
+                    item.style.setProperty("display", "none", "important");
                     item.classList.add("ima-focus-hidden");
                     continue;
                 }
@@ -3776,7 +3732,7 @@ function _doProcessMenu() {
                     if (inspectedMenuItems.length > 50) inspectedMenuItems.pop();
                 }
 
-                let targetMenuId: string | null = null;
+                let targetMenuId = null;
                 for (const m of menus) {
                     if ((m.items || []).some(pat => matchesTarget(rawText, pat, "contains"))) {
                         targetMenuId = m.id;
@@ -3810,14 +3766,14 @@ function _doProcessMenu() {
                         }
 
                         if (shouldHide) {
-                            (item as HTMLElement).style.setProperty("display", "none", "important");
+                            item.style.setProperty("display", "none", "important");
                         } else {
-                            (item as HTMLElement).style.removeProperty("display");
+                            item.style.removeProperty("display");
                         }
                     }
 
                     if (actions.rename && actions.rename.trim()) {
-                        const labelNode = item.querySelector('.label_c1e9c4 span') || item.querySelector('.label_c1e9c4') || item.querySelector('span');
+                        const labelNode = item.querySelector('.label_c1e9c4 span, [class*="label_"] span') || item.querySelector('.label_c1e9c4, [class*="label_"]') || item.querySelector('span');
                         if (labelNode && labelNode.textContent !== actions.rename) {
                             labelNode.textContent = actions.rename;
                         }
@@ -3825,10 +3781,10 @@ function _doProcessMenu() {
 
                     if (actions.icon?.mode === "hide" || (actions.icon?.mode === "none" && actions.icon?.value === "none")) {
                         explicitlyNoIcon = true;
-                        const anyIcon = item.querySelector('.iconContainerLeft_c1e9c4, .iconContainer_c1e9c4, .ima-injected-icon');
-                        if (anyIcon) (anyIcon as HTMLElement).style.setProperty("display", "none", "important");
+                        const anyIcon = item.querySelector('.iconContainerLeft_c1e9c4, .iconContainer_c1e9c4, [class*="iconContainerLeft_"], [class*="iconContainer_"], .ima-injected-icon');
+                        if (anyIcon) anyIcon.style.setProperty("display", "none", "important");
                     } else if (actions.icon?.mode === "custom" && actions.icon.value && actions.icon.value !== "none" && actions.icon.value !== "default") {
-                        let iconSpan = item.querySelector(".ima-injected-icon") as HTMLElement | null;
+                        let iconSpan = item.querySelector(".ima-injected-icon");
                         if (!iconSpan) {
                             iconSpan = document.createElement("div");
                             iconSpan.className = "ima-injected-icon";
@@ -3851,16 +3807,16 @@ function _doProcessMenu() {
                             const parsed = parseInt(actions.position, 10);
                             orderVal = isNaN(parsed) ? 0 : parsed;
                         }
-                        (item as HTMLElement).style.setProperty("order", String(orderVal), "important");
+                        item.style.setProperty("order", String(orderVal), "important");
                         item.setAttribute("data-ima-pos", actions.position);
                     } else {
-                        (item as HTMLElement).style.removeProperty("order");
+                        item.style.removeProperty("order");
                         item.removeAttribute("data-ima-pos");
                     }
 
                     const sepKey = itemId || rawText;
                     if (actions.separator && actions.separator !== "none") {
-                        const itemOrder = parseInt((item as HTMLElement).style.getPropertyValue("order"), 10);
+                        const itemOrder = parseInt(item.style.getPropertyValue("order"), 10);
                         if (actions.separator === "before" || actions.separator === "both") {
                             if (!item.parentElement?.querySelector(`.ima-inserted-sep[data-ima-sep-before="${sepKey}"]`)) {
                                 const sep = document.createElement("div");
@@ -3884,58 +3840,57 @@ function _doProcessMenu() {
                             }
                         }
                     } else if (item.parentElement) {
-                        (item.parentElement as HTMLElement).querySelectorAll(`.ima-inserted-sep[data-ima-sep-before="${sepKey}"], .ima-inserted-sep[data-ima-sep-after="${sepKey}"]`).forEach(s => (s as HTMLElement).remove());
+                        item.parentElement.querySelectorAll(`.ima-inserted-sep[data-ima-sep-before="${sepKey}"], .ima-inserted-sep[data-ima-sep-after="${sepKey}"]`).forEach(s => s.remove());
                     }
 
                     const style = actions.style || {};
                     const bgCss = colorToCss(style.backgroundColor);
                     if (bgCss) {
-                        (item as HTMLElement).style.setProperty("background-color", bgCss, "important");
+                        item.style.setProperty("background-color", bgCss, "important");
                     }
                     if (style.pill) {
-                        (item as HTMLElement).style.setProperty("border-radius", "9999px", "important");
-                        (item as HTMLElement).style.setProperty("overflow", "hidden", "important");
+                        item.style.setProperty("border-radius", "9999px", "important");
+                        item.style.setProperty("overflow", "hidden", "important");
                     }
 
                     const fgCss = colorToCss(style.color);
                     if (fgCss) {
-                        (item as HTMLElement).style.setProperty("color", fgCss, "important");
+                        item.style.setProperty("color", fgCss, "important");
                     }
 
                     const lbl = item.querySelector('.label_c1e9c4, [class*="label_"], .container_a4ac84') || item;
                     if (style.fontSize) {
                         const fs = String(style.fontSize).endsWith("px") ? String(style.fontSize) : `${style.fontSize}px`;
-                        (item as HTMLElement).style.setProperty("font-size", fs, "important");
-                        (lbl as HTMLElement).style.setProperty("font-size", fs, "important");
+                        item.style.setProperty("font-size", fs, "important");
+                        lbl.style.setProperty("font-size", fs, "important");
                     }
                     if (style.fontWeight) {
-                        (item as HTMLElement).style.setProperty("font-weight", style.fontWeight, "important");
-                        (lbl as HTMLElement).style.setProperty("font-weight", style.fontWeight, "important");
+                        item.style.setProperty("font-weight", style.fontWeight, "important");
+                        lbl.style.setProperty("font-weight", style.fontWeight, "important");
                     }
                     if (fgCss) {
-                        (lbl as HTMLElement).style.setProperty("color", fgCss, "important");
+                        lbl.style.setProperty("color", fgCss, "important");
                     }
 
                     const textElements = item.querySelectorAll("span, div, svg, path");
                     textElements.forEach(el => {
-                        const elHtml = el as HTMLElement;
                         if (fgCss) {
-                            elHtml.style.setProperty("color", fgCss, "important");
+                            el.style.setProperty("color", fgCss, "important");
                             if (el.tagName === "svg" || el.tagName === "path") {
-                                elHtml.style.setProperty("fill", fgCss, "important");
+                                el.style.setProperty("fill", fgCss, "important");
                             }
                         }
                     });
                 } else if (item.hasAttribute("data-ima-applied-rule")) {
                     item.removeAttribute("data-ima-applied-rule");
-                    (item as HTMLElement).style.removeProperty("display");
-                    (item as HTMLElement).style.removeProperty("order");
+                    item.style.removeProperty("display");
+                    item.style.removeProperty("order");
                     item.removeAttribute("data-ima-pos");
-                    (item as HTMLElement).style.removeProperty("background-color");
-                    (item as HTMLElement).style.removeProperty("color");
-                    (item as HTMLElement).style.removeProperty("border-radius");
-                    (item as HTMLElement).style.removeProperty("font-size");
-                    (item as HTMLElement).style.removeProperty("font-weight");
+                    item.style.removeProperty("background-color");
+                    item.style.removeProperty("color");
+                    item.style.removeProperty("border-radius");
+                    item.style.removeProperty("font-size");
+                    item.style.removeProperty("font-weight");
                 }
 
                 // Default icon injection
@@ -3956,8 +3911,8 @@ function _doProcessMenu() {
                 // Hide items assigned to custom submenus
                 if (targetMenuId && menuBuckets[targetMenuId]) {
                     item.classList.add("ima-item-hidden-for-submenu");
-                    (item as HTMLElement).style.setProperty("display", "none", "important");
-                    menuBuckets[targetMenuId].push(item as HTMLElement);
+                    item.style.setProperty("display", "none", "important");
+                    menuBuckets[targetMenuId].push(item);
                 }
             } catch (itemErr) {
                 console.error("[iMAMenu] Item error:", itemErr);
@@ -3965,8 +3920,7 @@ function _doProcessMenu() {
         }
 
         // Mount / reconcile custom submenu triggers idempotently
-        for (const [mId, movedItemsList] of Object.entries(menuBuckets)) {
-            const movedItems = movedItemsList as HTMLElement[];
+        for (const [mId, movedItems] of Object.entries(menuBuckets)) {
             const menuDef = menus.find(m => m.id === mId);
             if (!menuDef) continue;
 
@@ -3982,16 +3936,16 @@ function _doProcessMenu() {
                 for (let i = 1; i < existingTriggers.length; i++) existingTriggers[i].remove();
             }
 
-            let triggerGroup = existingTriggers[0] as CustomMenuGroupElement | undefined;
+            let triggerGroup = existingTriggers[0];
             if (triggerGroup) {
-                (triggerGroup as CustomMenuGroupElement)._itemsToMove = movedItems;
+                triggerGroup._itemsToMove = movedItems;
                 if (menuDef.position === "top") triggerGroup.style.setProperty("order", "-9998", "important");
                 else if (menuDef.position === "bottom") triggerGroup.style.setProperty("order", "9998", "important");
                 else triggerGroup.style.removeProperty("order");
             } else {
-                triggerGroup = createSubmenuTrigger(menuDef, movedItems, menuEl as HTMLElement | null);
+                triggerGroup = createSubmenuTrigger(menuDef, movedItems, menuEl);
                 triggerGroup.setAttribute("data-menu-id", mId);
-                (triggerGroup as CustomMenuGroupElement)._itemsToMove = movedItems;
+                triggerGroup._itemsToMove = movedItems;
                 if (menuDef.position === "top") triggerGroup.style.setProperty("order", "-9998", "important");
                 else if (menuDef.position === "bottom") triggerGroup.style.setProperty("order", "9998", "important");
                 scroller.appendChild(triggerGroup);
@@ -4000,14 +3954,14 @@ function _doProcessMenu() {
     }
 }
 
-function openRuleBuilderForItem(targetText?: string | null, context: string = "all", ruleId?: string | null, itemId?: string | null) {
+function openRuleBuilderForItem(targetText, context = "all", ruleId = null, itemId = null) {
     const rules = getStoredRules();
     const cleanTarget = (targetText || "").trim();
     const cleanItemId = (itemId || "").trim();
-    let existing: IMARule | null = null;
+    let existing = null;
 
     if (ruleId) {
-        existing = rules.find(r => r.id === ruleId) || null;
+        existing = rules.find(r => r.id === ruleId);
     }
     if (!existing && (cleanItemId || cleanTarget)) {
         existing = rules.find(r => 
@@ -4015,7 +3969,7 @@ function openRuleBuilderForItem(targetText?: string | null, context: string = "a
             ((r.target && r.target.trim().toLowerCase() === cleanTarget.toLowerCase() || 
               (r.actions?.rename && r.actions.rename.trim().toLowerCase() === cleanTarget.toLowerCase())) &&
              ruleMatchesContext(r.context, context))
-        ) || null;
+        );
     }
 
     if (existing) {
@@ -4031,21 +3985,21 @@ function openRuleBuilderForItem(targetText?: string | null, context: string = "a
     switchTab("builder");
 
     setTimeout(() => {
-        const targetInp = document.getElementById("ima-builder-target") as HTMLInputElement | null;
+        const targetInp = document.getElementById("ima-builder-target");
         if (targetInp && !editingRuleId) {
             targetInp.value = cleanTarget;
             targetInp.focus();
             targetInp.select();
         }
-        const targetIdInp = document.getElementById("ima-builder-target-id") as HTMLInputElement | null;
+        const targetIdInp = document.getElementById("ima-builder-target-id");
         if (targetIdInp && !editingRuleId && cleanItemId) {
             targetIdInp.value = cleanItemId;
         }
-        const matchSelect = document.getElementById("ima-builder-match") as HTMLSelectElement | null;
+        const matchSelect = document.getElementById("ima-builder-match");
         if (matchSelect && !editingRuleId) {
-            if (matchSelect) matchSelect.value = "exact";
+            matchSelect.value = "exact";
         }
-        const ctxInput = document.getElementById("ima-builder-context") as HTMLInputElement | null;
+        const ctxInput = document.getElementById("ima-builder-context");
         if (ctxInput && context && context !== "all" && !editingRuleId) {
             ctxInput.value = context;
             const chips = document.getElementById("ima-builder-context-chips");
@@ -4059,15 +4013,15 @@ function openRuleBuilderForItem(targetText?: string | null, context: string = "a
     }, 50);
 }
 
-function onPointerDown(e: PointerEvent) {
+function onPointerDown(e) {
     isShiftPressed = e.shiftKey;
     isCtrlPressed = e.ctrlKey;
     isAltPressed = e.altKey;
     if (e.shiftKey) {
         lastShiftRightClickTime = Date.now();
     }
-    if (activeFlyout && !activeFlyout.contains(e.target as Node | null)) {
-        const trigger = (e.target as HTMLElement | null)?.closest?.(".ima-custom-menu-group");
+    if (activeFlyout && !activeFlyout.contains(e.target)) {
+        const trigger = e.target?.closest?.(".ima-custom-menu-group");
         if (!trigger) {
             closeActiveFlyout();
         }
@@ -4117,14 +4071,16 @@ function onContextMenu(e) {
 export default definePlugin({
     name: "iMAMenu",
     description: "Create custom submenus, move items, customize icons & style (iMA Menu engine).",
-    authors: [Devs.iMAboud],
+    authors: [{ name: "iMAboud", id: 0n }],
     enabledByDefault: true,
     settings,
 
     start() {
-        const win = window as unknown as { __iMAMenuRunning?: boolean };
-        if (win.__iMAMenuRunning) return;
-        win.__iMAMenuRunning = true;
+        if (window.__iMAMenuRunning) {
+            console.warn("[iMAMenu] Plugin already running, skipping duplicate start.");
+            return;
+        }
+        window.__iMAMenuRunning = true;
 
         try {
             const legacy = window.Vencord?.Settings?.plugins?.HideContextMenuItems
@@ -4163,9 +4119,8 @@ export default definePlugin({
                 const m = mutations[i];
                 if (m.addedNodes.length > 0 || m.removedNodes.length > 0) {
                     for (let j = 0; j < m.addedNodes.length; j++) {
-                        const raw = m.addedNodes[j];
-                        if (raw.nodeType === 1) {
-                            const n = raw as HTMLElement;
+                        const n = m.addedNodes[j];
+                        if (n.nodeType === 1) {
                             if (n.classList?.contains("ima-submenu-flyout") ||
                                 n.classList?.contains("ima-custom-menu-group") ||
                                 n.classList?.contains("ima-inserted-sep") ||
@@ -4184,9 +4139,8 @@ export default definePlugin({
                     }
                     if (hasRelevant) break;
                     for (let j = 0; j < m.removedNodes.length; j++) {
-                        const raw = m.removedNodes[j];
-                        if (raw.nodeType === 1) {
-                            const n = raw as HTMLElement;
+                        const n = m.removedNodes[j];
+                        if (n.nodeType === 1) {
                             if (n.classList?.contains("ima-submenu-flyout") ||
                                 n.classList?.contains("ima-custom-menu-group") ||
                                 n.classList?.contains("ima-inserted-sep") ||
@@ -4218,9 +4172,7 @@ export default definePlugin({
     },
 
     stop() {
-        const win = window as unknown as { __iMAMenuRunning?: boolean };
-        win.__iMAMenuRunning = false;
-
+        window.__iMAMenuRunning = false;
         window.removeEventListener("keydown", onKeyDown);
         window.removeEventListener("keyup", onKeyUp);
         window.removeEventListener("pointerdown", onPointerDown, true);
@@ -4235,7 +4187,7 @@ export default definePlugin({
         document.querySelectorAll(".ima-submenu-flyout").forEach(el => el.remove());
         document.querySelectorAll(".ima-item-hidden-for-submenu").forEach(el => {
             el.classList.remove("ima-item-hidden-for-submenu");
-            (el as HTMLElement).style.removeProperty("display");
+            el.style.removeProperty("display");
         });
         document.getElementById("ima-discord-modify-modal")?.remove();
         document.getElementById("ima-glyph-browser-modal")?.remove();
@@ -4243,7 +4195,7 @@ export default definePlugin({
         document.getElementById("ima-color-picker-overlay")?.remove();
         document.getElementById("ima-discord-modify-css")?.remove();
         document.querySelectorAll('div[role="menu"] [style*="display: none"]').forEach(el => {
-            (el as HTMLElement).style.removeProperty("display");
+            el.style.removeProperty("display");
         });
     }
 });

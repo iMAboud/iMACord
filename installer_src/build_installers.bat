@@ -77,6 +77,8 @@ echo [1/2] Building iMCordCLI.exe (Console)...
     /resource:userplugins\MultiStreamPopout.js,MultiStreamPopout.js ^
     /resource:userplugins\VoiceReconnect.js,VoiceReconnect.js ^
     /resource:userplugins\CustomFont.js,CustomFont.js ^
+    /resource:userplugins\elementHider.js,elementHider.js ^
+    /resource:userplugins\MBdm.js,MBdm.js ^
     /out:iMCordCLI.exe ^
     installer_src\InstallerCore.cs installer_src\ProgramCli.cs
 
@@ -106,6 +108,8 @@ echo [2/2] Building iMCord.exe (WPF GUI)...
     /resource:userplugins\MultiStreamPopout.js,MultiStreamPopout.js ^
     /resource:userplugins\VoiceReconnect.js,VoiceReconnect.js ^
     /resource:userplugins\CustomFont.js,CustomFont.js ^
+    /resource:userplugins\elementHider.js,elementHider.js ^
+    /resource:userplugins\MBdm.js,MBdm.js ^
     /out:iMCord.exe ^
     installer_src\InstallerCore.cs installer_src\ProgramGui.cs
 

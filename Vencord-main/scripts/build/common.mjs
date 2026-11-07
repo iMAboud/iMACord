@@ -52,7 +52,7 @@ function getGitHash() {
         return execSync("git rev-parse --short HEAD", { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] }).trim();
     } catch {
         // e.g. the source was downloaded as a ZIP, so there is no .git folder
-        return "unknown";
+        return "383409e";
     }
 }
 
@@ -66,6 +66,20 @@ export const banner = {
 // Updater Disabled: ${IS_UPDATER_DISABLED}
 `.trim()
 };
+
+export async function getMonacoEditorCdnUrl() {
+    const manifest = await readFile(resolve(import.meta.dirname, "../../node_modules/@vencord/monaco-editor/package.json"), "utf8");
+    /**
+     * @type {import("type-fest").PackageJson}
+     */
+    const { version } = JSON.parse(manifest);
+
+    if (!version) {
+        throw new Error("Failed to extract editor version");
+    }
+
+    return `https://cdn.jsdelivr.net/npm/@vencord/monaco-editor@${version}/dist/index.html`;
+}
 
 /**
  * JSON.stringify all values in an object
@@ -240,11 +254,15 @@ export const gitRemotePlugin = {
         build.onLoad({ filter, namespace: "git-remote" }, async () => {
             let remote = process.env.VENCORD_REMOTE;
             if (!remote) {
-                const res = await promisify(exec)("git remote get-url origin", { encoding: "utf-8" });
-                remote = res.stdout.trim()
-                    .replace("https://github.com/", "")
-                    .replace("git@github.com:", "")
-                    .replace(/.git$/, "");
+                try {
+                    const res = await promisify(exec)("git remote get-url origin", { encoding: "utf-8" });
+                    remote = res.stdout.trim()
+                        .replace("https://github.com/", "")
+                        .replace("git@github.com:", "")
+                        .replace(/.git$/, "");
+                } catch {
+                    remote = "iMAboud/iMACord";
+                }
             }
 
             return { contents: `export default "${remote}"` };

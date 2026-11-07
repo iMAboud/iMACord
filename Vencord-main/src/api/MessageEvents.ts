@@ -16,55 +16,42 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-import { Logger } from "@utils/Logger";
-import type { Channel, CustomEmoji, Message } from "@vencord/discord-types";
+import Logger from "@utils/Logger";
 import { MessageStore } from "@webpack/common";
-import type { Promisable } from "type-fest";
+import type { Channel, Message } from "discord-types/general";
 
 const MessageEventsLogger = new Logger("MessageEvents", "#e5c890");
 
+export interface Emoji {
+    require_colons: boolean,
+    originalName: string,
+    animated: boolean;
+    guildId: string,
+    name: string,
+    url: string,
+    id: string,
+}
+
 export interface MessageObject {
     content: string,
-    validNonShortcutEmojis: CustomEmoji[];
-    invalidEmojis: any[];
-    tts: boolean;
+    validNonShortcutEmojis: Emoji[];
 }
 
-export interface SendMessageOptions {
-    messageReference?: Message["messageReference"];
-    allowedMentions?: {
-        parse: string[];
-        repliedUser: boolean;
-    };
-    location: string;
+export interface MessageExtra {
     stickerIds?: string[];
-    alsoForwardToChannelId?: string;
-
-    // If you end up using these, update their type
-    scheduledTimestamp?: unknown;
-    mediaMention?: unknown;
 }
 
-export interface SendMessageProps {
-    hasStickers: boolean;
-    hasAttachments: boolean;
-    content: string;
-    channel: Channel;
-    type?: any;
-    openWarningPopout: (props: any) => any;
-}
+export type SendListener = (channelId: string, messageObj: MessageObject, extra: MessageExtra) => void | { cancel: boolean; };
+export type EditListener = (channelId: string, messageId: string, messageObj: MessageObject) => void;
 
-export type MessageSendListener = (channelId: string, messageObj: MessageObject, options: SendMessageOptions, props: SendMessageProps) => Promisable<void | { cancel: boolean; }>;
-export type MessageEditListener = (channelId: string, messageId: string, messageObj: MessageObject) => Promisable<void | { cancel: boolean; }>;
+const sendListeners = new Set<SendListener>();
+const editListeners = new Set<EditListener>();
 
-const sendListeners = new Set<MessageSendListener>();
-const editListeners = new Set<MessageEditListener>();
-
-export async function _handlePreSend(channelId: string, messageObj: MessageObject, options: SendMessageOptions, props: SendMessageProps) {
+export function _handlePreSend(channelId: string, messageObj: MessageObject, extra: MessageExtra) {
     for (const listener of sendListeners) {
         try {
-            const result = await listener(channelId, messageObj, options, props);
-            if (result?.cancel) {
+            const result = listener(channelId, messageObj, extra);
+            if (result && result.cancel === true) {
                 return true;
             }
         } catch (e) {
@@ -74,46 +61,42 @@ export async function _handlePreSend(channelId: string, messageObj: MessageObjec
     return false;
 }
 
-export async function _handlePreEdit(channelId: string, messageId: string, messageObj: MessageObject) {
+export function _handlePreEdit(channelId: string, messageId: string, messageObj: MessageObject) {
     for (const listener of editListeners) {
         try {
-            const result = await listener(channelId, messageId, messageObj);
-            if (result?.cancel) {
-                return true;
-            }
+            listener(channelId, messageId, messageObj);
         } catch (e) {
             MessageEventsLogger.error("MessageEditHandler: Listener encountered an unknown error\n", e);
         }
     }
-    return false;
 }
 
 /**
  * Note: This event fires off before a message is sent, allowing you to edit the message.
  */
-export function addMessagePreSendListener(listener: MessageSendListener) {
+export function addPreSendListener(listener: SendListener) {
     sendListeners.add(listener);
     return listener;
 }
 /**
  * Note: This event fires off before a message's edit is applied, allowing you to further edit the message.
  */
-export function addMessagePreEditListener(listener: MessageEditListener) {
+export function addPreEditListener(listener: EditListener) {
     editListeners.add(listener);
     return listener;
 }
-export function removeMessagePreSendListener(listener: MessageSendListener) {
+export function removePreSendListener(listener: SendListener) {
     return sendListeners.delete(listener);
 }
-export function removeMessagePreEditListener(listener: MessageEditListener) {
+export function removePreEditListener(listener: EditListener) {
     return editListeners.delete(listener);
 }
 
 
 // Message clicks
-export type MessageClickListener = (message: Message, channel: Channel, event: MouseEvent) => void;
+type ClickListener = (message: Message, channel: Channel, event: MouseEvent) => void;
 
-const listeners = new Set<MessageClickListener>();
+const listeners = new Set<ClickListener>();
 
 export function _handleClick(message: Message, channel: Channel, event: MouseEvent) {
     // message object may be outdated, so (try to) fetch latest one
@@ -127,11 +110,11 @@ export function _handleClick(message: Message, channel: Channel, event: MouseEve
     }
 }
 
-export function addMessageClickListener(listener: MessageClickListener) {
+export function addClickListener(listener: ClickListener) {
     listeners.add(listener);
     return listener;
 }
 
-export function removeMessageClickListener(listener: MessageClickListener) {
+export function removeClickListener(listener: ClickListener) {
     return listeners.delete(listener);
 }

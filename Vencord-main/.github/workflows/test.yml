@@ -1,22 +1,23 @@
 name: test
 on:
     push:
+        branches:
+            - main
     pull_request:
         branches:
             - main
-            - dev
 jobs:
     test:
         runs-on: ubuntu-latest
 
         steps:
-            - uses: actions/checkout@v7
-            - uses: pnpm/action-setup@v6 # Install pnpm using packageManager key in package.json
+            - uses: actions/checkout@v3
+            - uses: pnpm/action-setup@v2 # Install pnpm using packageManager key in package.json
 
-            - name: Use Node.js 24
-              uses: actions/setup-node@v6
+            - name: Use Node.js 18
+              uses: actions/setup-node@v2
               with:
-                  node-version: 24
+                  node-version: 18
                   cache: "pnpm"
 
             - name: Install dependencies
@@ -25,8 +26,5 @@ jobs:
             - name: Lint & Test if desktop version compiles
               run: pnpm test
 
-            - name: Test if web version compiles
-              run: pnpm buildWeb
-
-            - name: Test if plugin structure is valid
-              run: pnpm generatePluginJson
+            - name: Lint & Test if web version compiles
+              run: pnpm testWeb

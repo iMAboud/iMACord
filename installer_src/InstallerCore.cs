@@ -49,7 +49,9 @@ namespace VencordInstaller
             "iMAMenu.js",
             "MultiStreamPopout.js",
             "VoiceReconnect.js",
-            "CustomFont.js"
+            "CustomFont.js",
+            "elementHider.js",
+            "MBdm.js"
         };
 
         private static readonly Dictionary<string, string> BranchNames = new Dictionary<string, string>()

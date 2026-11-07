@@ -17,55 +17,84 @@
 */
 
 import { filters, mapMangledModuleLazy } from "@webpack";
-import { closeAllModals, closeModal, openMediaModal, openModal, openModalLazy } from "@webpack/common";
 
-import { LazyComponent } from "./react";
-
-/** @deprecated Migrate to new Modals */
-export const enum ModalSize {
+export enum ModalSize {
     SMALL = "small",
     MEDIUM = "medium",
     LARGE = "large",
     DYNAMIC = "dynamic",
 }
 
-/** @deprecated Migrate to new Modals */
-export const Modals = mapMangledModuleLazy(".MODAL_ROOT_LEGACY,", {
-    ModalRoot: filters.componentByCode('.MODAL,"aria-labelledby":'),
-    ModalHeader: filters.componentByCode(",id:"),
-    ModalContent: filters.componentByCode("scrollbarType:"),
-    ModalFooter: filters.componentByCode(".HORIZONTAL_REVERSE,"),
-    ModalCloseButton: filters.componentByCode(".withCircleBackground")
-}) as never;
+enum ModalTransitionState {
+    ENTERING,
+    ENTERED,
+    EXITING,
+    EXITED,
+    HIDDEN,
+}
 
-/** @deprecated Migrate to new Modals */
-export const ModalRoot = LazyComponent(() => (Modals as any).ModalRoot) as never;
-/** @deprecated Migrate to new Modals */
-export const ModalHeader = LazyComponent(() => (Modals as any).ModalHeader) as never;
-/** @deprecated Migrate to new Modals */
-export const ModalContent = LazyComponent(() => (Modals as any).ModalContent) as never;
-/** @deprecated Migrate to new Modals */
-export const ModalFooter = LazyComponent(() => (Modals as any).ModalFooter) as never;
-/** @deprecated Migrate to new Modals */
-export const ModalCloseButton = LazyComponent(() => (Modals as any).ModalCloseButton) as never;
+export interface ModalProps {
+    transitionState: ModalTransitionState;
+    onClose(): Promise<void>;
+}
 
-/** @deprecated Migrate to new Modals */
-export const ModalAPI = {
-    openModal,
-    openModalLazy,
-    closeModal,
-    closeAllModals
-} as never;
+export interface ModalOptions {
+    modalKey?: string;
+    onCloseRequest?: (() => void);
+    onCloseCallback?: (() => void);
+}
 
-export {
-    /** @deprecated Migrate to new Modals */
-    closeAllModals,
-    /** @deprecated Migrate to new Modals */
-    closeModal,
-    /** @deprecated Migrate to new Modals */
-    openMediaModal,
-    /** @deprecated Migrate to new Modals */
-    openModal,
-    /** @deprecated Migrate to new Modals */
-    openModalLazy
-};
+interface ModalRootProps {
+    transitionState: ModalTransitionState;
+    children: React.ReactNode;
+    size?: ModalSize;
+    role?: "alertdialog" | "dialog";
+    className?: string;
+    onAnimationEnd?(): string;
+}
+
+type RenderFunction = (props: ModalProps) => React.ReactNode;
+
+export const Modals = mapMangledModuleLazy("().closeWithCircleBackground", {
+    ModalRoot: filters.byCode("().root"),
+    ModalHeader: filters.byCode("().header"),
+    ModalContent: filters.byCode("().content"),
+    ModalFooter: filters.byCode("().footerSeparator"),
+    ModalCloseButton: filters.byCode("().closeWithCircleBackground"),
+});
+
+export const ModalRoot = (props: ModalRootProps) => <Modals.ModalRoot {...props} />;
+export const ModalHeader = (props: any) => <Modals.ModalHeader {...props} />;
+export const ModalContent = (props: any) => <Modals.ModalContent {...props} />;
+export const ModalFooter = (props: any) => <Modals.ModalFooter {...props} />;
+export const ModalCloseButton = (props: any) => <Modals.ModalCloseButton {...props} />;
+
+const ModalAPI = mapMangledModuleLazy("onCloseRequest:null!=", {
+    openModal: filters.byCode("onCloseRequest:null!="),
+    closeModal: filters.byCode("onCloseCallback&&"),
+    openModalLazy: m => m?.length === 1 && filters.byCode(".apply(this,arguments)")(m),
+});
+
+/**
+ * Wait for the render promise to resolve, then open a modal with it.
+ * This is equivalent to render().then(openModal)
+ * You should use the Modal components exported by this file
+ */
+export function openModalLazy(render: () => Promise<RenderFunction>, options?: ModalOptions & { contextKey?: string; }): Promise<string> {
+    return ModalAPI.openModalLazy(render, options);
+}
+
+/**
+ * Open a Modal with the given render function.
+ * You should use the Modal components exported by this file
+ */
+export function openModal(render: RenderFunction, options?: ModalOptions, contextKey?: string): string {
+    return ModalAPI.openModal(render, options, contextKey);
+}
+
+/**
+ * Close a modal by its key
+ */
+export function closeModal(modalKey: string, contextKey?: string): void {
+    return ModalAPI.closeModal(modalKey, contextKey);
+}

@@ -16,15 +16,24 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-import "./ErrorCard.css";
+import { Card } from "@webpack/common";
 
-import { classes } from "@utils/misc";
-import type { HTMLProps } from "react";
-
-export function ErrorCard(props: React.PropsWithChildren<HTMLProps<HTMLDivElement>>) {
+interface Props {
+    style?: React.CSSProperties;
+    className?: string;
+}
+export function ErrorCard(props: React.PropsWithChildren<Props>) {
     return (
-        <div {...props} className={classes(props.className, "vc-error-card")}>
+        <Card className={props.className} style={
+            {
+                padding: "2em",
+                backgroundColor: "#e7828430",
+                borderColor: "#e78284",
+                color: "var(--text-normal)",
+                ...props.style
+            }
+        }>
             {props.children}
-        </div>
+        </Card>
     );
 }

@@ -178,7 +178,7 @@ async function runUpdateCheck() {
 }
 
 async function init() {
-    await onceReady;
+    await Promise.all([onceReady, loadAllUserPlugins().catch(e => PMLogger.error("Failed to load user plugins", e))]);
     startAllPlugins(StartAt.WebpackReady);
 
     syncSettings();
@@ -204,15 +204,10 @@ async function init() {
     }
 }
 
-async function main() {
-    await loadAllUserPlugins();
-    initPluginManager();
-    initStyles();
-    startAllPlugins(StartAt.Init);
-    init();
-}
-
-main();
+initPluginManager();
+initStyles();
+startAllPlugins(StartAt.Init);
+init();
 
 document.addEventListener("DOMContentLoaded", () => {
     startAllPlugins(StartAt.DOMContentLoaded);

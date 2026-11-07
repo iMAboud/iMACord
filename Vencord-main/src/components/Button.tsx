@@ -8,7 +8,6 @@ import "./Button.css";
 
 import { classNameFactory } from "@utils/css";
 import { classes } from "@utils/misc";
-import type { Button as DiscordButton } from "@vencord/discord-types";
 import type { ComponentPropsWithRef } from "react";
 
 import { OpenExternalIcon } from "./Icons";
@@ -63,19 +62,17 @@ export function TextButton({ variant = "primary", className, ...restProps }: Tex
 
 // #region Old compability
 
-export const ButtonCompat: DiscordButton = function ButtonCompat({ look, color = "BRAND", size = "medium", ...restProps }) {
+export const ButtonCompat: any = function ButtonCompat({ look, color = "BRAND", size = "medium", ...restProps }: any) {
     return look === "LINK"
-        ? <TextButton variant={TextButtonPropsColorMapping[color]} {...restProps as TextButtonProps} />
-        : <Button variant={ButtonColorMapping[color]} size={size as ButtonSize} {...restProps as ButtonProps} />;
+        ? <TextButton variant={TextButtonPropsColorMapping[color] ?? "primary"} {...restProps as TextButtonProps} />
+        : <Button variant={ButtonColorMapping[color] ?? "primary"} size={size as ButtonSize} {...restProps as ButtonProps} />;
 };
 
-/** @deprecated */
 ButtonCompat.Looks = {
     FILLED: "",
     LINK: "LINK"
 } as const;
 
-/** @deprecated */
 ButtonCompat.Colors = {
     BRAND: "BRAND",
     PRIMARY: "PRIMARY",
@@ -87,7 +84,7 @@ ButtonCompat.Colors = {
     WHITE: "WHITE",
 } as const;
 
-const ButtonColorMapping: Record<keyof typeof ButtonCompat["Colors"], ButtonProps["variant"]> = {
+const ButtonColorMapping: Record<string, ButtonProps["variant"]> = {
     BRAND: "primary",
     PRIMARY: "secondary",
     RED: "dangerPrimary",
@@ -98,7 +95,7 @@ const ButtonColorMapping: Record<keyof typeof ButtonCompat["Colors"], ButtonProp
     WHITE: "overlayPrimary"
 };
 
-const TextButtonPropsColorMapping: Record<keyof typeof ButtonCompat["Colors"], TextButtonProps["variant"]> = {
+const TextButtonPropsColorMapping: Record<string, TextButtonProps["variant"]> = {
     BRAND: "primary",
     PRIMARY: "primary",
     RED: "danger",
@@ -109,7 +106,6 @@ const TextButtonPropsColorMapping: Record<keyof typeof ButtonCompat["Colors"], T
     WHITE: "secondary"
 };
 
-/** @deprecated */
 ButtonCompat.Sizes = {
     SMALL: "small",
     MEDIUM: "medium",

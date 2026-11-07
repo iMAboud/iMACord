@@ -16,26 +16,15 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-export * from "../shared/debounce";
-export * from "../shared/onceDefined";
 export * from "./ChangeList";
-export * from "./clipboard";
-export * from "./constants";
-export * from "./cspViolations";
-export * from "./css";
-export * from "./discord";
-export * from "./guards";
-export * from "./intlHash";
-export * from "./lazy";
-export * from "./lazyReact";
-export * from "./localStorage";
-export * from "./Logger";
-export * from "./margins";
-export * from "./mergeDefaults";
+export * as Constants from "./constants";
+export * from "./debounce";
+export * as Discord from "./discord";
+export { default as IpcEvents } from "./IpcEvents";
+export { default as Logger } from "./Logger";
 export * from "./misc";
-export * from "./modal";
-export * from "./onlyOnce";
-export * from "./patches";
+export * as Modals from "./modal";
+export * from "./onceDefined";
+export * from "./proxyLazy";
 export * from "./Queue";
-export * from "./react";
-export * from "./text";
+
