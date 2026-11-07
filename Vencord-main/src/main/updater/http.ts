@@ -129,49 +129,44 @@ async function fetchUpdates(): Promise<boolean> {
 
     if (!manifest) return false;
 
-    const remoteTime = manifest.updatedAt ? Date.parse(manifest.updatedAt) : 0;
-    const isRemoteNewer = remoteTime > BUILD_TIMESTAMP;
+    for (const [filename, info] of Object.entries(manifest.dist ?? {})) {
+        if (!VENCORD_FILES.includes(filename) || !info?.hash) continue;
 
-    if (isRemoteNewer) {
-        for (const [filename, info] of Object.entries(manifest.dist ?? {})) {
-            if (!VENCORD_FILES.includes(filename) || !info?.hash) continue;
+        const hash = info.hash.toLowerCase();
+        const destPath = join(CORE_DIR, filename);
+        const coreNeedsUpdate = (await localHash(destPath)) !== hash;
 
-            const hash = info.hash.toLowerCase();
-            const destPath = join(CORE_DIR, filename);
-            const coreNeedsUpdate = (await localHash(destPath)) !== hash;
+        let distNeedsUpdate = false;
+        if (DIST_DIR && DIST_DIR !== CORE_DIR && existsSync(DIST_DIR)) {
+            distNeedsUpdate = (await localHash(join(DIST_DIR, filename))) !== hash;
+        }
 
-            let distNeedsUpdate = false;
-            if (DIST_DIR && DIST_DIR !== CORE_DIR && existsSync(DIST_DIR)) {
-                distNeedsUpdate = (await localHash(join(DIST_DIR, filename))) !== hash;
-            }
+        if (!coreNeedsUpdate && !distNeedsUpdate) continue;
 
-            if (!coreNeedsUpdate && !distNeedsUpdate) continue;
+        const updateUrl = info.url ?? `${RELEASE_BASE}/${encodeURIComponent(filename)}`;
 
-            const updateUrl = info.url ?? `${RELEASE_BASE}/${encodeURIComponent(filename)}`;
-
-            if (coreNeedsUpdate) {
-                pending.push({
-                    filename,
-                    destPath,
-                    hash,
-                    url: updateUrl
-                });
-            }
-            if (distNeedsUpdate) {
-                pending.push({
-                    filename: `${filename} (dist)`,
-                    destPath: join(DIST_DIR, filename),
-                    hash,
-                    url: updateUrl
-                });
-            }
-
-            changes.push({
-                hash: hash.slice(0, 7),
-                author: "iMCord",
-                message: `[Vencord Core] Updated ${filename}`
+        if (coreNeedsUpdate) {
+            pending.push({
+                filename,
+                destPath,
+                hash,
+                url: updateUrl
             });
         }
+        if (distNeedsUpdate) {
+            pending.push({
+                filename: `${filename} (dist)`,
+                destPath: join(DIST_DIR, filename),
+                hash,
+                url: updateUrl
+            });
+        }
+
+        changes.push({
+            hash: hash.slice(0, 7),
+            author: "iMCord",
+            message: `[Vencord Core] Updated ${filename}`
+        });
     }
 
     const plugins = manifest.plugins ?? {};
@@ -182,7 +177,6 @@ async function fetchUpdates(): Promise<boolean> {
         const destPath = join(USER_PLUGINS_DIR, filename);
         const current = await localHash(destPath);
         if (current === hash) continue;
-        if (current !== null && !isRemoteNewer) continue;
         if (current === null && BUILTIN_PLUGIN_HASHES[filename] === hash) continue;
 
         pending.push({
