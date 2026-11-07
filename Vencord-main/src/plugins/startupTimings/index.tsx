@@ -16,28 +16,21 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-import { ClockIcon } from "@components/Icons";
-import SettingsPlugin from "@plugins/_core/settings";
-import { Devs } from "@utils/constants";
-import { removeFromArray } from "@utils/misc";
-import definePlugin from "@utils/types";
 
-import StartupTimingPage from "./StartupTimingPage";
+import { Devs } from "@utils/constants";
+import { LazyComponent } from "@utils/misc";
+import definePlugin from "@utils/types";
 
 export default definePlugin({
     name: "StartupTimings",
     description: "Adds Startup Timings to the Settings menu",
-    tags: ["Developers"],
     authors: [Devs.Megu],
-    start() {
-        SettingsPlugin.customEntries.push({
-            key: "vencord_startup_timings",
-            title: "Startup Timings",
-            Component: StartupTimingPage,
-            Icon: ClockIcon
-        });
-    },
-    stop() {
-        removeFromArray(SettingsPlugin.customEntries, e => e.key === "vencord_startup_timings");
-    },
+    patches: [{
+        find: "PAYMENT_FLOW_MODAL_TEST_PAGE,",
+        replacement: {
+            match: /({section:[\w.]+?\.PAYMENT_FLOW_MODAL_TEST_PAGE,)/,
+            replace: '{section:"StartupTimings",label:"Startup Timings",element:Vencord.Plugins.plugins.StartupTimings.StartupTimingPage},$1'
+        }
+    }],
+    StartupTimingPage: LazyComponent(() => require("./StartupTimingPage").default)
 });

@@ -1558,7 +1558,11 @@ const UI_CSS = `
 .custom-config-group [role="menuitem"] .iconContainerLeft_c1e9c4,
 .ima-custom-menu-group [role="menuitem"] .iconContainerLeft_c1e9c4,
 .custom-config-group [role="menuitem"] .iconContainer_c1e9c4,
-.ima-custom-menu-group [role="menuitem"] .iconContainer_c1e9c4 {
+.ima-custom-menu-group [role="menuitem"] .iconContainer_c1e9c4,
+.custom-config-group [role="menuitem"] [class*="iconContainerLeft_"],
+.ima-custom-menu-group [role="menuitem"] [class*="iconContainerLeft_"],
+.custom-config-group [role="menuitem"] [class*="iconContainer_"],
+.ima-custom-menu-group [role="menuitem"] [class*="iconContainer_"] {
     display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
@@ -1569,7 +1573,9 @@ const UI_CSS = `
 }
 
 .custom-config-group [role="menuitem"] .label_c1e9c4,
-.ima-custom-menu-group [role="menuitem"] .label_c1e9c4 {
+.ima-custom-menu-group [role="menuitem"] .label_c1e9c4,
+.custom-config-group [role="menuitem"] [class*="label_"],
+.ima-custom-menu-group [role="menuitem"] [class*="label_"] {
     display: flex !important;
     flex-direction: row !important;
     align-items: center !important;
@@ -3767,7 +3773,7 @@ function _doProcessMenu() {
                     }
 
                     if (actions.rename && actions.rename.trim()) {
-                        const labelNode = item.querySelector('.label_c1e9c4 span') || item.querySelector('.label_c1e9c4') || item.querySelector('span');
+                        const labelNode = item.querySelector('.label_c1e9c4 span, [class*="label_"] span') || item.querySelector('.label_c1e9c4, [class*="label_"]') || item.querySelector('span');
                         if (labelNode && labelNode.textContent !== actions.rename) {
                             labelNode.textContent = actions.rename;
                         }
@@ -3775,7 +3781,7 @@ function _doProcessMenu() {
 
                     if (actions.icon?.mode === "hide" || (actions.icon?.mode === "none" && actions.icon?.value === "none")) {
                         explicitlyNoIcon = true;
-                        const anyIcon = item.querySelector('.iconContainerLeft_c1e9c4, .iconContainer_c1e9c4, .ima-injected-icon');
+                        const anyIcon = item.querySelector('.iconContainerLeft_c1e9c4, .iconContainer_c1e9c4, [class*="iconContainerLeft_"], [class*="iconContainer_"], .ima-injected-icon');
                         if (anyIcon) anyIcon.style.setProperty("display", "none", "important");
                     } else if (actions.icon?.mode === "custom" && actions.icon.value && actions.icon.value !== "none" && actions.icon.value !== "default") {
                         let iconSpan = item.querySelector(".ima-injected-icon");

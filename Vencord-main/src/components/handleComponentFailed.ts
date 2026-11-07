@@ -16,12 +16,29 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-import { maybePromptToUpdate } from "@utils/updater";
+import { isOutdated, rebuild, update } from "@utils/updater";
 
-export function handleComponentFailed() {
-    maybePromptToUpdate(
-        "Uh Oh! Failed to render this Page." +
-        " However, there is an update available that might fix it." +
-        " Would you like to update and restart now?"
-    );
+export async function handleComponentFailed() {
+    if (isOutdated) {
+        setImmediate(async () => {
+            const wantsUpdate = confirm(
+                "Uh Oh! Failed to render this Page." +
+                " However, there is an update available that might fix it." +
+                " Would you like to update and restart now?"
+            );
+            if (wantsUpdate) {
+                try {
+                    await update();
+                    await rebuild();
+                    if (IS_WEB)
+                        location.reload();
+                    else
+                        DiscordNative.app.relaunch();
+                } catch (e) {
+                    console.error(e);
+                    alert("That also failed :( Try updating or reinstalling with the installer!");
+                }
+            }
+        });
+    }
 }

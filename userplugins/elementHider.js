@@ -161,6 +161,13 @@ function escapeCssIdentifier(str) {
     return String(str).replace(/([!"#$%&'()*+,./:;<=>?@[\\\]^`{|}~])/g, "\\$1");
 }
 
+function normalizeHashedSelector(selector) {
+    if (!selector || typeof selector !== "string") return selector;
+    return selector.replace(/\.([a-zA-Z0-9]+?)_{1,2}[a-zA-Z0-9]{5,8}(?![a-zA-Z0-9_-])/g, (_, base) => {
+        return `[class*="${base}_"]`;
+    });
+}
+
 function getStableClassSelector(el, smartMode = true) {
     const classList = Array.from(el.classList || []).filter(
         cls => cls && !cls.startsWith("vc-element-hider")
@@ -170,9 +177,9 @@ function getStableClassSelector(el, smartMode = true) {
     if (smartMode) {
         const stableParts = [];
         for (const cls of classList.slice(0, 3)) {
-            const match = cls.match(/^([a-zA-Z0-9]+[-_])[a-zA-Z0-9]{5,8}$/);
+            const match = cls.match(/^([a-zA-Z0-9]+?)_{1,2}[a-zA-Z0-9]{5,8}$/);
             if (match) {
-                stableParts.push(`[class*="${match[1]}"]`);
+                stableParts.push(`[class*="${match[1]}_"]`);
             } else {
                 stableParts.push(`.${escapeCssIdentifier(cls)}`);
             }
@@ -426,8 +433,23 @@ export default definePlugin({
         }
 
         if (Array.isArray(loaded)) {
-            this.rules = loaded;
+            let migrated = false;
+            this.rules = loaded.map(r => {
+                if (r && typeof r.selector === "string") {
+                    const norm = normalizeHashedSelector(r.selector);
+                    if (norm !== r.selector) {
+                        migrated = true;
+                        return { ...r, selector: norm };
+                    }
+                }
+                return r;
+            });
             this.applyPersistentRules();
+            if (migrated) {
+                try {
+                    this.saveRules();
+                } catch {}
+            }
         }
 
         // 3. Also check Vencord.Api.DataStore and IndexedDB asynchronously (survives even if localStorage is cleared)
@@ -803,7 +825,7 @@ export default definePlugin({
 
         const activeSelectors = this.rules
             .filter(r => r && r.enabled !== false && r.selector && r.id !== this.hoveredRuleId)
-            .map(r => `${r.selector} { display: none !important; }`);
+            .map(r => `${normalizeHashedSelector(r.selector)} { display: none !important; }`);
 
         style.textContent = activeSelectors.join("\n");
     },

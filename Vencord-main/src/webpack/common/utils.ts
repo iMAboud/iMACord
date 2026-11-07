@@ -16,7 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-import type * as t from "@vencord/discord-types";
+import * as t from "@vencord/discord-types";
 import { _resolveReady, filters, findByCodeLazy, findByPropsLazy, findLazy, mapMangledModuleLazy, waitFor } from "@webpack";
 import type * as TSPattern from "ts-pattern";
 
@@ -84,59 +84,85 @@ const ToastPosition = {
 };
 
 export interface ToastData {
-    message: string,
-    id: string,
-    /**
-     * Toasts.Type
-     */
-    type: string,
+    message?: string;
+    text?: string;
+    id?: string;
+    type?: string;
+    variant?: string;
+    position?: any;
     options?: ToastOptions;
 }
 
 export interface ToastOptions {
-    /**
-     * Toasts.Position
-     */
-    position?: number;
-    component?: React.ReactNode,
+    position?: number | string;
+    component?: React.ReactNode;
     duration?: number;
 }
 
-interface ToastsExports {
-    showToast: (data: ToastData) => void;
-    popToast(): void;
+const _rawShowToast: any = findByCodeLazy(".currentToastMap.has(");
+const _rawPopToast: any = findByCodeLazy(".currentToastMap.delete(");
+
+function normalizeToastPayload(dataOrMessage: any, type?: string, options?: ToastOptions) {
+    if (typeof dataOrMessage === "string") {
+        const variant = type === "failure" ? "critical" : (type || undefined);
+        const rawPos = options?.position;
+        const position = rawPos === 1 || rawPos === "bottom" ? "bottom" : rawPos === 0 || rawPos === "top" ? "top" : undefined;
+        return {
+            text: dataOrMessage,
+            message: dataOrMessage,
+            id: (Math.random() || Math.random()).toString(36).slice(2),
+            type: type || "message",
+            variant,
+            position,
+            options: options ? { ...options, position: rawPos === "bottom" ? 1 : rawPos === "top" ? 0 : rawPos } : undefined
+        };
+    }
+    if (dataOrMessage && typeof dataOrMessage === "object") {
+        const text = dataOrMessage.text ?? dataOrMessage.message ?? "";
+        const rawVariant = dataOrMessage.variant ?? dataOrMessage.type;
+        const variant = rawVariant === "failure" ? "critical" : rawVariant;
+        const typeStr = rawVariant === "critical" ? "failure" : (rawVariant || "message");
+        const rawPos = dataOrMessage.position ?? dataOrMessage.options?.position;
+        const position = rawPos === 1 || rawPos === "bottom" ? "bottom" : rawPos === 0 || rawPos === "top" ? "top" : rawPos;
+        return {
+            ...dataOrMessage,
+            text,
+            message: text,
+            id: dataOrMessage.id ?? (Math.random() || Math.random()).toString(36).slice(2),
+            type: typeStr,
+            variant,
+            position
+        };
+    }
+    return dataOrMessage;
 }
 
-const ToastsExports = mapMangledModuleLazy(".currentToastMap.has(", {
-    showToast: filters.byCode(".currentToastMap.has("),
-    popToast: filters.byCode(".delete(")
-});
-
-export function createToast(message: string, type: string, options?: ToastOptions): ToastData {
-    return {
-        message,
-        id: Toasts.genId(),
-        type,
-        options
-    };
+export function createToast(message: string, type = ToastType.MESSAGE, options?: ToastOptions): ToastData {
+    return normalizeToastPayload(message, type, options);
 }
 
 export const Toasts = {
     Type: ToastType,
     Position: ToastPosition,
     genId: () => (Math.random() || Math.random()).toString(36).slice(2),
-
-    show: ToastsExports.showToast,
-    pop: ToastsExports.popToast,
+    show: (data: any) => {
+        try {
+            _rawShowToast?.(normalizeToastPayload(data));
+        } catch {}
+    },
+    pop: () => {
+        try {
+            _rawPopToast?.();
+        } catch {}
+    },
     create: createToast,
 };
 
-/**
- * Show a simple toast. If you need more options, use Toasts.show manually
- */
-export function showToast(message: string, type = ToastType.MESSAGE, options?: ToastOptions) {
-    Toasts.show(Toasts.create(message, type, options));
-}
+export const showToast: any = function showToast(dataOrMessage: any, type?: string, options?: ToastOptions) {
+    try {
+        return _rawShowToast?.(normalizeToastPayload(dataOrMessage, type, options));
+    } catch {}
+};
 
 export const UserUtils = {
     getUser: findByCodeLazy(".USER(")
@@ -161,12 +187,13 @@ export const NavigationRouter: t.NavigationRouter = mapMangledModuleLazy("transi
     forward: filters.byCode("goForward()"),
 });
 export const ChannelRouter: t.ChannelRouter = mapMangledModuleLazy('"Thread must have a parent ID."', {
-    transitionToChannel: filters.byCode(".preload"),
+    transitionToChannel: filters.byCode(".openTextInVoiceIfVoiceChannel"),
     transitionToThread: filters.byCode('"Thread must have a parent ID."')
 });
 
-export let SettingsRouter: any;
-waitFor(["openUserSettings", "USER_SETTINGS_MODAL_KEY"], m => SettingsRouter = m);
+export const SettingsRouter: t.SettingsRouter = mapMangledModuleLazy('type:"USER_SETTINGS_MODAL_OPEN"', {
+    openUserSettings: filters.byCode('type:"USER_SETTINGS_MODAL_OPEN"')
+});
 
 export const PermissionsBits: t.PermissionsBits = findLazy(m => typeof m.ADMINISTRATOR === "bigint");
 
@@ -180,7 +207,11 @@ export const { zustandPersist } = mapMangledModuleLazy(".onRehydrateStorage)?", 
 
 export const MessageActions = findByPropsLazy("editMessage", "sendMessage");
 export const MessageCache = findByPropsLazy("clearCache", "_channelMessages");
-export const UserProfileActions = findByPropsLazy("openUserProfileModal", "closeUserProfileModal");
+export const openUserProfileModal: t.OpenUserProfileModal = findByCodeLazy('type:"USER_PROFILE_MODAL_OPEN"');
+export const UserProfileActions = {
+    openUserProfileModal,
+    closeUserProfileModal: () => {}
+};
 export const InviteActions = findByPropsLazy("resolveInvite");
 export const ChannelActionCreators = findByPropsLazy("openPrivateChannel");
 

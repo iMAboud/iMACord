@@ -31,30 +31,20 @@ import { filters, find, findCssClassesLazy, mapMangledCssClasses, mapMangledModu
 import { waitForComponent } from "./internal";
 
 export const Forms = {
-    // TODO: Stop using this and use Heading/Paragraph directly
-    /** @deprecated use Heading from Vencord */
     FormTitle: Heading,
-    /** @deprecated use Paragraph from Vencord */
     FormText: Paragraph,
-    /** @deprecated don't use this */
-    FormSection: "section" as never, // Backwards compat since Vesktop uses this
-    /** @deprecated use `@components/Divider` */
-    FormDivider: Divider as never, // Backwards compat since Vesktop uses this
+    FormSection: "section" as never,
+    FormDivider: Divider as never,
 };
 
-// TODO: Stop using this and use Paragraph/Span directly
-/** @deprecated use Paragraph, Span, or BaseText from Vencord */
 export const Text = TextCompat;
-/** @deprecated use Button from Vencord */
 export const Button = ButtonCompat;
-/** @deprecated Use FormSwitch from Vencord */
 export const Switch = FormSwitchCompat as never;
+export const TooltipContainer = TooltipContainerComponent as never;
 
 export const Checkbox = waitForComponent<t.Checkbox>("Checkbox", filters.componentByCode('"data-toggleable-component":"checkbox'));
 
 export const Tooltip = waitForComponent<t.Tooltip>("Tooltip", m => m.prototype?.shouldShowTooltip && m.prototype.render, TooltipFallback);
-/** @deprecated import from @vencord/components */
-export const TooltipContainer = TooltipContainerComponent as never;
 
 // FIXME: t.TextInput was for the old void components, and is not 100% correct for the mana component
 export const TextInput = waitForComponent<t.TextInput>("TextInput", filters.componentByCode('setHasValue?.(""!==', '="text",'));

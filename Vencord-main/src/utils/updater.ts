@@ -18,11 +18,11 @@
 
 import gitHash from "~git-hash";
 
-import { Logger } from "./Logger";
-import { relaunch } from "./native";
+import IpcEvents from "./IpcEvents";
+import Logger from "./Logger";
 import { IpcRes } from "./types";
 
-export const UpdateLogger = /* #__PURE__*/ new Logger("Updater", "white");
+export const UpdateLogger = new Logger("Updater", "white");
 export let isOutdated = false;
 export let isNewer = false;
 export let updateError: any;
@@ -38,51 +38,42 @@ async function Unwrap<T>(p: Promise<IpcRes<T>>) {
 }
 
 export async function checkForUpdates() {
-    changes = await Unwrap(VencordNative.updater.getUpdates());
-
-    // we only want to check this for the git updater, not the http updater
-    if (!IS_STANDALONE) {
-        if (changes.some(c => c.hash === gitHash)) {
-            isNewer = true;
-            return (isOutdated = false);
-        }
+    changes = await Unwrap(VencordNative.ipc.invoke<IpcRes<typeof changes>>(IpcEvents.GET_UPDATES));
+    if (changes.some(c => c.hash === gitHash)) {
+        isNewer = true;
+        return (isOutdated = false);
     }
-
     return (isOutdated = changes.length > 0);
 }
 
 export async function update() {
     if (!isOutdated) return true;
 
-    const res = await Unwrap(VencordNative.updater.update());
+    const res = await Unwrap(VencordNative.ipc.invoke<IpcRes<boolean>>(IpcEvents.UPDATE));
 
-    if (res) {
+    if (res)
         isOutdated = false;
-        if (!await Unwrap(VencordNative.updater.rebuild()))
-            throw new Error("The Build failed. Please try manually building the new update");
-    }
 
     return res;
 }
 
-export const getRepo = () => Unwrap(VencordNative.updater.getRepo());
+export function getRepo() {
+    return Unwrap(VencordNative.ipc.invoke<IpcRes<string>>(IpcEvents.GET_REPO));
+}
 
-export async function maybePromptToUpdate(confirmMessage: string, checkForDev = false) {
-    if (IS_WEB || IS_UPDATER_DISABLED) return;
-    if (checkForDev && IS_DEV) return;
+type Hashes = Record<"patcher.js" | "preload.js" | "renderer.js", string>;
 
-    try {
-        const isOutdated = await checkForUpdates();
-        if (isOutdated) {
-            const wantsUpdate = confirm(confirmMessage);
-            if (wantsUpdate && isNewer) return alert("Your local copy has more recent commits. Please stash or reset them.");
-            if (wantsUpdate) {
-                await update();
-                relaunch();
-            }
-        }
-    } catch (err) {
-        UpdateLogger.error(err);
-        alert("That also failed :( Try updating or re-installing with the installer!");
-    }
+/**
+ * @returns true if hard restart is required
+ */
+export async function rebuild() {
+    const oldHashes = await Unwrap(VencordNative.ipc.invoke<IpcRes<Hashes>>(IpcEvents.GET_HASHES));
+
+    if (!await Unwrap(VencordNative.ipc.invoke<IpcRes<boolean>>(IpcEvents.BUILD)))
+        throw new Error("The Build failed. Please try manually building the new update");
+
+    const newHashes = await Unwrap(VencordNative.ipc.invoke<IpcRes<Hashes>>(IpcEvents.GET_HASHES));
+
+    return oldHashes["patcher.js"] !== newHashes["patcher.js"] ||
+        oldHashes["preload.js"] !== newHashes["preload.js"];
 }

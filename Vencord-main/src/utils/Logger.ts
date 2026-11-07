@@ -16,7 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-export class Logger {
+export default class Logger {
     /**
      * Returns the console format args for a title with the specified background colour and black text
      * @param color Background colour
@@ -32,11 +32,6 @@ export class Logger {
     constructor(public name: string, public color: string = "white") { }
 
     private _log(level: "log" | "error" | "warn" | "info" | "debug", levelColor: string, args: any[], customFmt = "") {
-        if (IS_REPORTER && IS_WEB && !IS_VESKTOP) {
-            console[level]("[Vencord]", this.name + ":", ...args);
-            return;
-        }
-
         console[level](
             `%c Vencord %c %c ${this.name} ${customFmt}`,
             `background: ${levelColor}; color: black; font-weight: bold; border-radius: 5px;`,
