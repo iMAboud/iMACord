@@ -16,21 +16,26 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-import Logger from "@utils/Logger";
-import { LazyComponent } from "@utils/misc";
-import { Margins, React } from "@webpack/common";
+import { LazyComponent, LazyComponentWrapper } from "@utils/lazyReact";
+import { Logger } from "@utils/Logger";
+import { Margins } from "@utils/margins";
+import type { React } from "@webpack/common";
+import { ComponentType } from "react";
 
 import { ErrorCard } from "./ErrorCard";
 
-interface Props {
+interface Props<T = any> {
     /** Render nothing if an error occurs */
     noop?: boolean;
     /** Fallback component to render if an error occurs */
-    fallback?: React.ComponentType<React.PropsWithChildren<{ error: any; message: string; stack: string; }>>;
-    /** called when an error occurs */
-    onError?(error: Error, errorInfo: React.ErrorInfo): void;
+    fallback?: React.ComponentType<React.PropsWithChildren<{ error: any; message: string; stack: string; wrappedProps: T; }>>;
+    /** called when an error occurs. The props property is only available if using .wrap */
+    onError?(data: { error: Error, errorInfo: React.ErrorInfo, props: T; }): void;
     /** Custom error message */
     message?: string;
+
+    /** The props passed to the wrapped component. Only used by wrap */
+    wrappedProps?: T;
 }
 
 const color = "#e78284";
@@ -42,7 +47,9 @@ const NO_ERROR = {};
 // We might want to import this in a place where React isn't ready yet.
 // Thus, wrap in a LazyComponent
 const ErrorBoundary = LazyComponent(() => {
-    return class ErrorBoundary extends React.PureComponent<React.PropsWithChildren<Props>> {
+    // This component is used in a lot of files which end up importing other Webpack commons and causing circular imports.
+    // For this reason, use a non import access here.
+    return class ErrorBoundary extends Vencord.Webpack.Common.React.PureComponent<React.PropsWithChildren<Props>> {
         state = {
             error: NO_ERROR as any,
             stack: "",
@@ -65,34 +72,40 @@ const ErrorBoundary = LazyComponent(() => {
         }
 
         componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-            this.props.onError?.(error, errorInfo);
-            logger.error("A component threw an Error\n", error);
-            logger.error("Component Stack", errorInfo.componentStack);
+            this.props.onError?.({ error, errorInfo, props: this.props.wrappedProps });
+            logger.error(`${this.props.message || "A component threw an Error"}\n`, error, errorInfo.componentStack);
+        }
+
+        get isNoop() {
+            if (IS_DEV) return false;
+            return this.props.noop;
         }
 
         render() {
             if (this.state.error === NO_ERROR) return this.props.children;
 
-            if (this.props.noop) return null;
+            if (this.isNoop) return null;
 
             if (this.props.fallback)
-                return <this.props.fallback
-                    children={this.props.children}
-                    {...this.state}
-                />;
+                return (
+                    <this.props.fallback
+                        wrappedProps={this.props.wrappedProps}
+                        {...this.state}
+                    >
+                        {this.props.children}
+                    </this.props.fallback>
+                );
 
             const msg = this.props.message || "An error occurred while rendering this Component. More info can be found below and in your console.";
 
             return (
-                <ErrorCard style={{
-                    overflow: "hidden",
-                }}>
+                <ErrorCard style={{ overflow: "hidden" }}>
                     <h1>Oh no!</h1>
                     <p>{msg}</p>
                     <code>
                         {this.state.message}
                         {!!this.state.stack && (
-                            <pre className={Margins.marginTop8}>
+                            <pre className={Margins.top8}>
                                 {this.state.stack}
                             </pre>
                         )}
@@ -102,14 +115,22 @@ const ErrorBoundary = LazyComponent(() => {
         }
     };
 }) as
-    React.ComponentType<React.PropsWithChildren<Props>> & {
-        wrap<T extends JSX.IntrinsicAttributes = any>(Component: React.ComponentType<T>, errorBoundaryProps?: Props): React.ComponentType<T>;
-    };
+    LazyComponentWrapper<React.ComponentType<React.PropsWithChildren<Props>> & {
+        wrap<T extends object = any>(Component: React.ComponentType<T>, errorBoundaryProps?: Omit<Props<T>, "wrappedProps"> & { displayName?: string; }): React.FunctionComponent<T>;
+    }>;
 
-ErrorBoundary.wrap = (Component, errorBoundaryProps) => props => (
-    <ErrorBoundary {...errorBoundaryProps}>
-        <Component {...props} />
-    </ErrorBoundary>
-);
+ErrorBoundary.wrap = (Component, errorBoundaryProps) => {
+    const wrapper: ComponentType<any> = props => (
+        <ErrorBoundary {...errorBoundaryProps} wrappedProps={props}>
+            <Component {...props} />
+        </ErrorBoundary>
+    );
+
+    if (errorBoundaryProps?.displayName) {
+        wrapper.displayName = errorBoundaryProps.displayName;
+    }
+
+    return wrapper;
+};
 
 export default ErrorBoundary;

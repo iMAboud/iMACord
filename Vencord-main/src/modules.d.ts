@@ -16,12 +16,16 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-// eslint-disable-next-line spaced-comment
-/// <reference types="standalone-electron-types"/>
-
 declare module "~plugins" {
-    const plugins: Record<string, import("@utils/types").Plugin>;
+    import { PluginTarget } from "@utils/pluginTargets";
+    const plugins: Record<string, import("./utils/types").Plugin>;
+
     export default plugins;
+    export const PluginMeta: Record<string, {
+        folderName: string;
+        userPlugin: boolean;
+    }>;
+    export const ExcludedPlugins: Record<string, PluginTarget>;
 }
 
 declare module "~git-hash" {
@@ -33,7 +37,14 @@ declare module "~git-remote" {
     export default remote;
 }
 
-declare module "~fileContent/*" {
+declare module "file://*" {
     const content: string;
     export default content;
+}
+
+declare module "*.css";
+
+declare module "*.css?managed" {
+    const name: string;
+    export default name;
 }

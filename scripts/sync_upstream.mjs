@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import { execSync } from "child_process";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -12,6 +11,8 @@ const vencordDir = path.join(rootDir, "Vencord-main");
 const PROTECTED_FILES = new Set([
     "browser/VencordNativeStub.ts",
     "iMCord.ico",
+    "package.json",
+    "pnpm-workspace.yaml",
     "scripts/build/build.mjs",
     "scripts/build/common.mjs",
     "src/Vencord.ts",
@@ -48,16 +49,23 @@ const PROTECTED_FILES = new Set([
     "src/plugins/amongick/index.ts",
     "src/plugins/betterSettings/index.tsx",
     "src/plugins/copyFileContents/index.tsx",
+    "src/plugins/fakeNitro/index.tsx",
     "src/plugins/iMAMenu/index.ts",
     "src/plugins/memberCount/MemberCount.tsx",
+    "src/plugins/memberCount/index.tsx",
     "src/plugins/multiStreamPopout/index.tsx",
     "src/plugins/vencordToolbox/index.tsx",
     "src/plugins/vencordToolbox/menu.tsx",
     "src/shared/IpcEvents.ts",
+    "src/utils/constants.ts",
     "src/utils/lazy.ts",
     "src/webpack/common/components.ts",
     "src/webpack/common/utils.ts"
-]);
+].map(p => p.toLowerCase()));
+
+function isProtected(rel) {
+    return PROTECTED_FILES.has(rel.toLowerCase());
+}
 
 function walk(dir, root = dir, res = {}) {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -70,21 +78,47 @@ function walk(dir, root = dir, res = {}) {
     return res;
 }
 
+function removeEmptyDirs(dir) {
+    if (!fs.existsSync(dir)) return;
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        if (entry.name === "node_modules" || entry.name === "dist" || entry.name === ".git") continue;
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+            removeEmptyDirs(full);
+            if (fs.readdirSync(full).length === 0) {
+                fs.rmdirSync(full);
+            }
+        }
+    }
+}
+
 const upstreamArg = process.argv[2];
 if (upstreamArg && fs.existsSync(upstreamArg)) {
     const upFiles = walk(upstreamArg);
+    const localFiles = walk(vencordDir);
+
     let updated = 0;
     for (const [rel, buf] of Object.entries(upFiles)) {
-        if (PROTECTED_FILES.has(rel)) continue;
+        if (isProtected(rel)) continue;
         const dest = path.join(vencordDir, rel);
-        const cur = fs.existsSync(dest) ? fs.readFileSync(dest) : null;
+        const cur = localFiles[rel];
         if (!cur || !cur.equals(buf)) {
             fs.mkdirSync(path.dirname(dest), { recursive: true });
             fs.writeFileSync(dest, buf);
             updated++;
         }
     }
-    console.log(`[iMCord AutoSync] Synced ${updated} upstream Vencord files.`);
+
+    let removed = 0;
+    for (const rel of Object.keys(localFiles)) {
+        if (!upFiles[rel] && !isProtected(rel)) {
+            fs.rmSync(path.join(vencordDir, rel), { force: true });
+            removed++;
+        }
+    }
+    removeEmptyDirs(vencordDir);
+
+    console.log(`[iMCord AutoSync] Synced ${updated} upstream Vencord files, removed ${removed} obsolete files.`);
 } else {
     console.log("[iMCord AutoSync] Ready. Pass upstream path to sync.");
 }

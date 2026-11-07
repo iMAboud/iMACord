@@ -17,94 +17,159 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
+// @ts-check
 
-import esbuild from "esbuild";
-import { zip } from "fflate";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
-import { readFile } from "fs/promises";
-import { join, resolve } from "path";
+import { readFileSync } from "fs";
+import { appendFile, mkdir, readdir, readFile, rm, writeFile } from "fs/promises";
+import { join, relative } from "path";
+import Zip from "zip-local";
 
-// wtf is this assert syntax
-import PackageJSON from "../../package.json" assert { type: "json" };
-import { commonOpts, fileIncludePlugin, gitHashPlugin, gitRemotePlugin, globPlugins, watch } from "./common.mjs";
+import { BUILD_TIMESTAMP, commonOpts, globPlugins, IS_DEV, IS_REPORTER, IS_ANTI_CRASH_TEST, IS_STANDALONE, VERSION, commonRendererPlugins, buildOrWatchAll, stringifyValues } from "./common.mjs";
 
 /**
- * @type {esbuild.BuildOptions}
+ * @type {import("esbuild").BuildOptions}
  */
 const commonOptions = {
     ...commonOpts,
     entryPoints: ["browser/Vencord.ts"],
-    globalName: "Vencord",
     format: "iife",
-    external: ["plugins", "git-hash"],
-    plugins: [
-        globPlugins,
-        gitHashPlugin,
-        gitRemotePlugin,
-        fileIncludePlugin
-    ],
+    globalName: "Vencord",
+    external: ["~plugins", "~git-hash", "/assets/*"],
     target: ["esnext"],
-    define: {
-        IS_WEB: "true",
-        IS_STANDALONE: "true",
-        IS_DEV: JSON.stringify(watch)
-    }
+    plugins: [
+        globPlugins("web"),
+        ...commonRendererPlugins
+    ],
+    define: stringifyValues({
+        IS_WEB: true,
+        IS_EXTENSION: false,
+        IS_USERSCRIPT: false,
+        IS_STANDALONE,
+        IS_DEV,
+        IS_REPORTER,
+        IS_ANTI_CRASH_TEST,
+        IS_DISCORD_DESKTOP: false,
+        IS_VESKTOP: false,
+        IS_UPDATER_DISABLED: true,
+        VERSION,
+        BUILD_TIMESTAMP
+    })
 };
 
-await Promise.all(
-    [
-        esbuild.build({
-            ...commonOptions,
-            outfile: "dist/browser.js",
-            footer: { js: "//# sourceURL=VencordWeb" },
-        }),
-        esbuild.build({
-            ...commonOptions,
-            outfile: "dist/Vencord.user.js",
-            banner: {
-                js: readFileSync("browser/userscript.meta.js", "utf-8").replace("%version%", `${PackageJSON.version}.${new Date().getTime()}`)
-            },
-            footer: {
-                // UserScripts get wrapped in an iife, so define Vencord prop on window that returns our local
-                js: "Object.defineProperty(window,'Vencord',{get:()=>Vencord});"
-            },
-        })
-    ]
-);
-
-async function buildPluginZip(target, files, shouldZip) {
-    const entries = {
-        "dist/Vencord.js": readFileSync("dist/browser.js"),
-        ...Object.fromEntries(await Promise.all(files.map(async f => [
-            (f.startsWith("manifest") ? "manifest.json" : f),
-            await readFile(join("browser", f))
-        ]))),
-    };
-
-    if (shouldZip) {
-        zip(entries, {}, (err, data) => {
-            if (err) {
-                console.error(err);
-                process.exitCode = 1;
-            } else {
-                writeFileSync("dist/" + target, data);
-                console.info("Extension written to dist/" + target);
-            }
-        });
-    } else {
-        if (existsSync(target))
-            rmSync(target, { recursive: true });
-        for (const entry in entries) {
-            const destination = "dist/" + target + "/" + entry;
-            const parentDirectory = resolve(destination, "..");
-            mkdirSync(parentDirectory, { recursive: true });
-            writeFileSync(destination, entries[entry]);
+/** @type {import("esbuild").BuildOptions[]} */
+const buildConfigs = [
+    {
+        ...commonOptions,
+        outfile: "dist/browser.js",
+        footer: { js: "//# sourceURL=file:///VencordWeb" }
+    },
+    {
+        ...commonOptions,
+        outfile: "dist/extension.js",
+        define: {
+            ...commonOptions.define,
+            IS_EXTENSION: "true"
+        },
+        footer: { js: "//# sourceURL=file:///VencordWeb" }
+    },
+    {
+        ...commonOptions,
+        inject: ["browser/GMPolyfill.js", ...(commonOptions?.inject || [])],
+        define: {
+            ...commonOptions.define,
+            IS_USERSCRIPT: "true",
+            window: "unsafeWindow",
+        },
+        outfile: "dist/Vencord.user.js",
+        banner: {
+            js: readFileSync("browser/userscript.meta.js", "utf-8").replace("%version%", `${VERSION}.${new Date().getTime()}`)
+        },
+        footer: {
+            // UserScripts get wrapped in an iife, so define Vencord prop on window that returns our local
+            js: "Object.defineProperty(unsafeWindow,'Vencord',{get:()=>Vencord});"
         }
-        console.info("Unpacked Extension written to dist/" + target);
     }
+];
+
+await buildOrWatchAll(buildConfigs);
+
+/**
+ * @type {(dir: string) => Promise<string[]>}
+ */
+async function globDir(dir) {
+    const files = [];
+
+    for (const child of await readdir(dir, { withFileTypes: true })) {
+        const p = join(dir, child.name);
+        if (child.isDirectory())
+            files.push(...await globDir(p));
+        else
+            files.push(p);
+    }
+
+    return files;
 }
 
-await buildPluginZip("extension-v3.zip", ["modifyResponseHeaders.json", "content.js", "manifestv3.json"], true);
-await buildPluginZip("extension-v2.zip", ["background.js", "content.js", "manifestv2.json"], true);
-await buildPluginZip("extension-v2-unpacked", ["background.js", "content.js", "manifestv2.json"], false);
+/**
+ * @type {(dir: string, outDir: string) => Promise<Record<string, string>>}
+ */
+async function loadDir(dir, outDir) {
+    const files = await globDir(dir);
+    return Object.fromEntries(await Promise.all(files.map(async f => [join(outDir, relative(dir, f)), await readFile(f)])));
+}
 
+/**
+  * @type {(target: string, files: string[]) => Promise<void>}
+ */
+async function buildExtension(target, files) {
+    const entries = {
+        "dist/Vencord.js": await readFile("dist/extension.js"),
+        "dist/Vencord.css": await readFile("dist/extension.css"),
+        ...await loadDir("node_modules/@vencord/monaco-editor/dist", "vendor/monaco"),
+        ...Object.fromEntries(await Promise.all(files.map(async f => {
+            let content = await readFile(join("browser", f));
+            if (f.startsWith("manifest")) {
+                const json = JSON.parse(content.toString("utf-8"));
+                json.version = VERSION;
+                content = Buffer.from(new TextEncoder().encode(JSON.stringify(json)));
+            }
+
+            return [
+                f.startsWith("manifest") ? "manifest.json" : f,
+                content
+            ];
+        })))
+    };
+
+    await rm(join("dist", target), { recursive: true, force: true });
+    await Promise.all(Object.entries(entries).map(async ([file, content]) => {
+        const dest = join("dist", target, file);
+        const parentDirectory = join(dest, "..");
+        await mkdir(parentDirectory, { recursive: true });
+        await writeFile(dest, content);
+    }));
+
+    console.info("Unpacked Extension written to dist/" + target);
+}
+
+const appendCssRuntime = readFile("dist/Vencord.user.css", "utf-8").then(content => {
+    const cssRuntime = `unsafeWindow._vcUserScriptRendererCss=\`${content.replaceAll("`", "\\`")}\``;
+
+    return appendFile("dist/Vencord.user.js", cssRuntime);
+});
+
+if (!process.argv.includes("--skip-extension")) {
+    await Promise.all([
+        appendCssRuntime,
+        buildExtension("chromium-unpacked", ["modifyResponseHeaders.json", "content.js", "manifest.json", "icon.png", "service-worker.js"]),
+        buildExtension("firefox-unpacked", ["background.js", "content.js", "manifestv2.json", "icon.png"]),
+    ]);
+
+    Zip.sync.zip("dist/chromium-unpacked").compress().save("dist/extension-chrome.zip");
+    console.info("Packed Chromium Extension written to dist/extension-chrome.zip");
+
+    Zip.sync.zip("dist/firefox-unpacked").compress().save("dist/extension-firefox.zip");
+    console.info("Packed Firefox Extension written to dist/extension-firefox.zip");
+} else {
+    await appendCssRuntime;
+}

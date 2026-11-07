@@ -1,64 +1,54 @@
 {
-  "version": "v1.0.43",
-  "updatedAt": "2026-11-07T11:12:38.584Z",
+  "version": "1.0.0",
+  "updatedAt": "2026-11-07T12:11:27.244Z",
   "dist": {
     "renderer.js": {
-      "hash": "07769465d31d6131611786f225a5d9befb74bff1e628d4ea3662acd2e7d91a8e",
-      "size": 2712594,
-      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.43/renderer.js"
+      "hash": "ed6d9e10db801b29029af40c3ea3c097266fa1b533c93d556472b454398f451a",
+      "size": 2701190
     },
     "renderer.css": {
       "hash": "34fb11b32dc8e02bea950506627f9885dd8604c6a71f4e129ec627f327487b77",
-      "size": 49733,
-      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.43/renderer.css"
+      "size": 49733
     },
     "patcher.js": {
-      "hash": "34cd04b544179e1842a03c14444578e79686fec33ee054df44a3bc56c7287b3f",
-      "size": 44839,
-      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.43/patcher.js"
+      "hash": "2330d6f907421b05557bedb90376700e305d0d47ad18a6dd047e9600874d9f46",
+      "size": 44839
     },
     "preload.js": {
       "hash": "09aef004d5278831845edf73eb35593daac5564cd5989edef3b2af7783f09c24",
-      "size": 2665,
-      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.43/preload.js"
+      "size": 2665
     }
   },
   "plugins": {
     "CustomFont.js": {
       "hash": "afa9b0e316c1dad981f4fadcd767b2b250d9971eec23697e321b4b82eb472a5b",
       "size": 4803,
-      "author": "iMAboud",
-      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.43/CustomFont.js"
+      "author": "iMAboud"
     },
     "elementHider.js": {
       "hash": "be03a7760c72949c2f7932b1a725815c0172c0bf5369b66f52d48881258df68e",
       "size": 50513,
-      "author": "iMAboud",
-      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.43/elementHider.js"
+      "author": "iMAboud"
     },
     "iMAMenu.js": {
       "hash": "5e1b9b6d389abccca38dbd41be13d9c43855b1f4b7ed6bd6092fa33ad23e5c85",
       "size": 185480,
-      "author": "iMAboud",
-      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.43/iMAMenu.js"
+      "author": "iMAboud"
     },
     "MBdm.js": {
       "hash": "b94455310ad5dda20d120cd60f473adfa464fab3838711becbc63161ebd44743",
       "size": 50680,
-      "author": "iMAboud",
-      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.43/MBdm.js"
+      "author": "iMAboud"
     },
     "MultiStreamPopout.js": {
       "hash": "478e0dfe5f829954d1f75f6ebd441c8d2a94a9e1c99050bcba9132be2f698df6",
       "size": 2251,
-      "author": "iMAboud",
-      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.43/MultiStreamPopout.js"
+      "author": "iMAboud"
     },
     "VoiceReconnect.js": {
       "hash": "cb0d4f400c29e9ce1295f260c6b185a7c01c3a673142bb5ada1544d35fc53b26",
       "size": 1848873,
-      "author": "iMAboud",
-      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.43/VoiceReconnect.js"
+      "author": "iMAboud"
     }
   },
   "removedPlugins": [

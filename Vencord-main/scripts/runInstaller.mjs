@@ -50,17 +50,7 @@ async function ensureBinary() {
 
     mkdirSync(FILE_DIR, { recursive: true });
 
-    const localRootCli = join(BASE_DIR, "..", "VencordInstallerCli.exe");
-    if (existsSync(localRootCli)) {
-        console.log("Using locally built custom " + filename);
-        return localRootCli;
-    }
-
     const outputFile = join(FILE_DIR, filename);
-    if (existsSync(outputFile) && !existsSync(ETAG_FILE)) {
-        console.log("Using custom " + filename);
-        return outputFile;
-    }
 
     const etag = existsSync(outputFile) && existsSync(ETAG_FILE)
         ? readFileSync(ETAG_FILE, "utf-8")
