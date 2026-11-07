@@ -16,39 +16,27 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-import { debounce } from "@utils/debounce";
-import IpcEvents from "@utils/IpcEvents";
-import electron, { contextBridge, ipcRenderer, webFrame } from "electron";
-import { readFileSync } from "fs";
-import { join } from "path";
+import { debounce } from "@shared/debounce";
+import { IpcEvents } from "@shared/IpcEvents";
+import { contextBridge, webFrame } from "electron/renderer";
 
-import VencordNative from "./VencordNative";
+import VencordNative, { invoke, sendSync } from "./VencordNative";
 
-if (electron.desktopCapturer === void 0) {
-    // Fix for desktopCapturer being main only in Electron 17+
-    // Discord accesses this in discord_desktop_core (DiscordNative.desktopCapture.getDesktopCaptureSources)
-    // and errors with cannot "read property getSources() of undefined"
-    // see discord_desktop_core/app/discord_native/renderer/desktopCapture.js
-    const electronPath = require.resolve("electron");
-    delete require.cache[electronPath]!.exports;
-    require.cache[electronPath]!.exports = {
-        ...electron,
-        desktopCapturer: {
-            getSources: opts => ipcRenderer.invoke(IpcEvents.GET_DESKTOP_CAPTURE_SOURCES, opts)
-        }
-    };
+
+// Monaco popout
+if (location.href === DESKTOP_MONACO_EDITOR_URL) {
+    contextBridge.exposeInMainWorld("setCss", debounce(VencordNative.quickCss.set));
+    contextBridge.exposeInMainWorld("getCurrentCss", VencordNative.quickCss.get);
+    contextBridge.exposeInMainWorld("getTheme", VencordNative.quickCss.getEditorTheme);
 }
+// Discord
+else {
+    contextBridge.exposeInMainWorld("VencordNative", VencordNative);
+    invoke(IpcEvents.INIT_FILE_WATCHERS);
 
-contextBridge.exposeInMainWorld("VencordNative", VencordNative);
-
-if (location.protocol !== "data:") {
-    // Discord
-    webFrame.executeJavaScript(readFileSync(join(__dirname, "renderer.js"), "utf-8"));
-    require(process.env.DISCORD_PRELOAD!);
-} else {
-    // Monaco Popout
-    contextBridge.exposeInMainWorld("setCss", debounce(s => VencordNative.ipc.invoke(IpcEvents.SET_QUICK_CSS, s)));
-    contextBridge.exposeInMainWorld("getCurrentCss", () => VencordNative.ipc.invoke(IpcEvents.GET_QUICK_CSS));
-    // shrug
-    contextBridge.exposeInMainWorld("getTheme", () => "vs-dark");
+    if (IS_DISCORD_DESKTOP) {
+        webFrame.executeJavaScript(sendSync<string>(IpcEvents.PRELOAD_GET_RENDERER_JS));
+        // Not supported in sandboxed preload scripts but Discord doesn't support it either so who cares
+        require(process.env.DISCORD_PRELOAD!);
+    }
 }

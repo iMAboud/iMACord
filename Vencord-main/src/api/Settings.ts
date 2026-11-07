@@ -16,108 +16,216 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-import IpcEvents from "@utils/IpcEvents";
-import Logger from "@utils/Logger";
-import { mergeDefaults } from "@utils/misc";
-import { OptionType } from "@utils/types";
-import { React } from "@webpack/common";
+import { SettingsStore as SettingsStoreClass } from "@shared/SettingsStore";
+import { Logger } from "@utils/Logger";
+import { mergeDefaults } from "@utils/mergeDefaults";
+import { DefinedSettings, OptionType, SettingsChecks, SettingsDefinition } from "@utils/types";
+import { React, useEffect } from "@webpack/common";
 
-import plugins from "~plugins";
+import plugins, { PluginMeta } from "~plugins";
 
 const logger = new Logger("Settings");
+
+export interface SettingsPluginUiElement {
+    enabled: boolean;
+    // TODO
+    /** not implemented for now */
+    order?: number;
+}
+export type SettingsPluginUiElements = {
+    /** id will be whatever id the element was registered with. Usually, but not always, the plugin name */
+    [id: string]: SettingsPluginUiElement;
+};
+
 export interface Settings {
-    notifyAboutUpdates: boolean;
+    autoUpdate: boolean;
+    autoUpdateNotification: boolean,
     useQuickCss: boolean;
+    eagerPatches: boolean;
+    enabledThemes: string[];
     enableReactDevtools: boolean;
     themeLinks: string[];
+    frameless: boolean;
+    transparent: boolean;
+    winCtrlQ: boolean;
+    nativeTitleBar: boolean;
+    macosVibrancyStyle:
+    | "content"
+    | "fullscreen-ui"
+    | "header"
+    | "hud"
+    | "menu"
+    | "popover"
+    | "selection"
+    | "sidebar"
+    | "titlebar"
+    | "tooltip"
+    | "under-page"
+    | "window"
+    | undefined;
+    windowsMaterial: "none" | "mica" | "tabbed" | "acrylic";
+    disableMinSize: boolean;
+    winNativeTitleBar: boolean;
     plugins: {
         [plugin: string]: {
             enabled: boolean;
+            isFavorite?: boolean;
+            isUserHidden?: boolean;
             [setting: string]: any;
         };
+    };
+
+    uiElements: {
+        messagePopoverButtons: SettingsPluginUiElements;
+        chatBarButtons: SettingsPluginUiElements;
+    },
+
+    notifications: {
+        timeout: number;
+        position: "top-right" | "bottom-right";
+        useNative: "always" | "never" | "not-focused";
+        logLimit: number;
+    };
+
+    cloud: {
+        authenticated: boolean;
+        url: string;
+        settingsSync: boolean;
+        settingsSyncVersion: number;
     };
 }
 
 const DefaultSettings: Settings = {
-    notifyAboutUpdates: true,
+    autoUpdate: true,
+    autoUpdateNotification: true,
     useQuickCss: true,
     themeLinks: [],
+    eagerPatches: false, // Eagerly patching no longer works due to module factories with the same id being able to have different sources now.
+    enabledThemes: [],
     enableReactDevtools: false,
-    plugins: {}
+    frameless: false,
+    transparent: false,
+    winCtrlQ: false,
+    nativeTitleBar: false,
+    macosVibrancyStyle: undefined,
+    windowsMaterial: "none",
+    disableMinSize: false,
+    winNativeTitleBar: false,
+    plugins: {
+        FakeNitro: { enabled: true },
+        iMAMenu: { enabled: true },
+        CopyFileContents: { enabled: true }
+    },
+
+    uiElements: {
+        chatBarButtons: {},
+        messagePopoverButtons: {}
+    },
+
+    notifications: {
+        timeout: 5000,
+        position: "bottom-right",
+        useNative: "not-focused",
+        logLimit: 50
+    },
+
+    cloud: {
+        authenticated: false,
+        url: "https://api.vencord.dev/",
+        settingsSync: false,
+        settingsSyncVersion: 0
+    }
 };
 
-try {
-    var settings = JSON.parse(VencordNative.ipc.sendSync(IpcEvents.GET_SETTINGS)) as Settings;
-    mergeDefaults(settings, DefaultSettings);
-} catch (err) {
-    var settings = mergeDefaults({} as Settings, DefaultSettings);
-    logger.error("An error occurred while loading the settings. Corrupt settings file?\n", err);
+const settings = !IS_REPORTER ? VencordNative.settings.get() : {} as Settings;
+mergeDefaults(settings, DefaultSettings);
+
+if (settings.plugins) {
+    const legacy = (settings.plugins as any).HideContextMenuItems
+        || (settings.plugins as any).hideContextMenuItems
+        || (settings.plugins as any)["iMA Menu"]
+        || (settings.plugins as any).imamenu;
+    if (legacy) {
+        const cur = (settings.plugins as any).iMAMenu;
+        const needsRules = !cur?.rules || cur.rules === "[]";
+        const needsMenus = !cur?.menus || cur.menus === "[]";
+        if (!cur || needsRules || needsMenus) {
+            (settings.plugins as any).iMAMenu = {
+                ...legacy,
+                ...cur,
+                enabled: true
+            };
+            if (needsRules && legacy.rules && legacy.rules !== "[]") {
+                (settings.plugins as any).iMAMenu.rules = legacy.rules;
+            }
+            if (needsMenus && legacy.menus && legacy.menus !== "[]") {
+                (settings.plugins as any).iMAMenu.menus = legacy.menus;
+            }
+            if (legacy.showDefaultIcons !== undefined && cur?.showDefaultIcons === undefined) {
+                (settings.plugins as any).iMAMenu.showDefaultIcons = legacy.showDefaultIcons;
+            }
+            if (legacy.hiddenPrefixes && !cur?.hiddenPrefixes) {
+                (settings.plugins as any).iMAMenu.hiddenPrefixes = legacy.hiddenPrefixes;
+            }
+            if (legacy.customStyles && legacy.customStyles !== "{}" && (!cur?.customStyles || cur.customStyles === "{}")) {
+                (settings.plugins as any).iMAMenu.customStyles = legacy.customStyles;
+            }
+        }
+    }
 }
 
-type SubscriptionCallback = ((newValue: any, path: string) => void) & { _path?: string; };
-const subscriptions = new Set<SubscriptionCallback>();
+export const SettingsStore = new SettingsStoreClass(settings, {
+    readOnly: true,
+    getDefaultValue({
+        target,
+        key,
+        path
+    }) {
+        const v = target[key];
+        if (!plugins) return v; // plugins not initialised yet. this means this path was reached by being called on the top level
 
-const proxyCache = {} as Record<string, any>;
+        if (path === "plugins" && key in plugins) {
+            const isAuto = [
+                "fakenitro",
+                "imamenu",
+                "copyfilecontents",
+                "copyfilecontent",
+                "crashhandler"
+            ].includes(key.toLowerCase());
 
-// Wraps the passed settings object in a Proxy to nicely handle change listeners and default values
-function makeProxy(settings: any, root = settings, path = ""): Settings {
-    return proxyCache[path] ??= new Proxy(settings, {
-        get(target, p: string) {
-            const v = target[p];
-
-            // using "in" is important in the following cases to properly handle falsy or nullish values
-            if (!(p in target)) {
-                // Return empty for plugins with no settings
-                if (path === "plugins" && p in plugins)
-                    return target[p] = makeProxy({
-                        enabled: plugins[p].required ?? false
-                    }, root, `plugins.${p}`);
-
-                // Since the property is not set, check if this is a plugin's setting and if so, try to resolve
-                // the default value.
-                if (path.startsWith("plugins.")) {
-                    const plugin = path.slice("plugins.".length);
-                    if (plugin in plugins) {
-                        const setting = plugins[plugin].options?.[p];
-                        if (!setting) return v;
-                        if ("default" in setting)
-                            // normal setting with a default value
-                            return (target[p] = setting.default);
-                        if (setting.type === OptionType.SELECT) {
-                            const def = setting.options.find(o => o.default);
-                            if (def)
-                                target[p] = def.value;
-                            return def?.value;
-                        }
-                    }
-                }
-                return v;
-            }
-
-            // Recursively proxy Objects with the updated property path
-            if (typeof v === "object" && !Array.isArray(v) && v !== null)
-                return makeProxy(v, root, `${path}${path && "."}${p}`);
-
-            // primitive or similar, no need to proxy further
-            return v;
-        },
-
-        set(target, p: string, v) {
-            // avoid unnecessary updates to React Components and other listeners
-            if (target[p] === v) return true;
-
-            target[p] = v;
-            // Call any listeners that are listening to a setting of this path
-            const setPath = `${path}${path && "."}${p}`;
-            for (const subscription of subscriptions) {
-                if (!subscription._path || subscription._path === setPath) {
-                    subscription(v, setPath);
-                }
-            }
-            // And don't forget to persist the settings!
-            VencordNative.ipc.invoke(IpcEvents.SET_SETTINGS, JSON.stringify(root, null, 4));
-            return true;
+            return target[key] = {
+                enabled: Boolean(IS_REPORTER || plugins[key].required || isAuto)
+            };
         }
+
+        // Since the property is not set, check if this is a plugin's setting and if so, try to resolve
+        // the default value.
+        if (path.startsWith("plugins.")) {
+            const plugin = path.slice("plugins.".length);
+            if (plugin in plugins) {
+                const setting = plugins[plugin].settings?.def[key];
+                if (!setting) return v;
+
+                if ("default" in setting)
+                    // normal setting with a default value
+                    return (target[key] = setting.default);
+
+                if (setting.type === OptionType.SELECT) {
+                    const def = setting.options.find(o => o.default);
+                    if (def)
+                        target[key] = def.value;
+                    return def?.value;
+                }
+            }
+        }
+        return v;
+    }
+});
+
+if (!IS_REPORTER) {
+    SettingsStore.addGlobalChangeListener((_, path) => {
+        SettingsStore.plain.cloud.settingsSyncVersion = Date.now();
+        VencordNative.settings.set(SettingsStore.plain, path);
     });
 }
 
@@ -125,7 +233,7 @@ function makeProxy(settings: any, root = settings, path = ""): Settings {
  * Same as {@link Settings} but unproxied. You should treat this as readonly,
  * as modifying properties on this will not save to disk or call settings
  * listeners.
- * WARNING: default values specified in plugin.options will not be ensured here. In other words,
+ * WARNING: default values specified in plugin.settings will not be ensured here. In other words,
  * settings for which you specified a default value may be uninitialised. If you need proper
  * handling for default values, use {@link Settings}
  */
@@ -135,7 +243,7 @@ export const PlainSettings = settings;
  * the updated settings to disk.
  * This recursively proxies objects. If you need the object non proxied, use {@link PlainSettings}
  */
-export const Settings = makeProxy(settings);
+export const Settings = SettingsStore.store;
 
 /**
  * Settings hook for React components. Returns a smart settings
@@ -144,45 +252,38 @@ export const Settings = makeProxy(settings);
  * @param paths An optional list of paths to whitelist for rerenders
  * @returns Settings
  */
-export function useSettings(paths?: string[]) {
+// TODO: Representing paths as essentially "string[].join('.')" wont allow dots in paths, change to "paths?: string[][]" later
+export function useSettings(paths?: UseSettings<Settings>[]) {
     const [, forceUpdate] = React.useReducer(() => ({}), {});
 
-    const onUpdate: SubscriptionCallback = paths
-        ? (value, path) => paths.includes(path) && forceUpdate()
-        : forceUpdate;
+    useEffect(() => {
+        if (paths) {
+            paths.forEach(p => {
+                if (p.endsWith(".*")) {
+                    SettingsStore.addPrefixChangeListener(p.slice(0, -2), forceUpdate);
+                } else {
+                    SettingsStore.addChangeListener(p, forceUpdate);
+                }
+            });
 
-    React.useEffect(() => {
-        subscriptions.add(onUpdate);
-        return () => void subscriptions.delete(onUpdate);
-    }, []);
+            return () => paths.forEach(p => {
+                if (p.endsWith(".*")) {
+                    SettingsStore.removePrefixChangeListener(p.slice(0, -2), forceUpdate);
+                } else {
+                    SettingsStore.removeChangeListener(p, forceUpdate);
+                }
+            });
+        } else {
+            SettingsStore.addGlobalChangeListener(forceUpdate);
+            return () => SettingsStore.removeGlobalChangeListener(forceUpdate);
+        }
+    }, [paths]);
 
-    return Settings;
-}
-
-// Resolves a possibly nested prop in the form of "some.nested.prop" to type of T.some.nested.prop
-type ResolvePropDeep<T, P> = P extends "" ? T :
-    P extends `${infer Pre}.${infer Suf}` ?
-    Pre extends keyof T ? ResolvePropDeep<T[Pre], Suf> : never : P extends keyof T ? T[P] : never;
-
-/**
- * Add a settings listener that will be invoked whenever the desired setting is updated
- * @param path Path to the setting that you want to watch, for example "plugins.Unindent.enabled" will fire your callback
- *             whenever Unindent is toggled. Pass an empty string to get notified for all changes
- * @param onUpdate Callback function whenever a setting matching path is updated. It gets passed the new value and the path
- *                 to the updated setting. This path will be the same as your path argument, unless it was an empty string.
- *
- * @example addSettingsListener("", (newValue, path) => console.log(`${path} is now ${newValue}`))
- *          addSettingsListener("plugins.Unindent.enabled", v => console.log("Unindent is now", v ? "enabled" : "disabled"))
- */
-export function addSettingsListener<Path extends keyof Settings>(path: Path, onUpdate: (newValue: Settings[Path], path: Path) => void): void;
-export function addSettingsListener<Path extends string>(path: Path, onUpdate: (newValue: Path extends "" ? any : ResolvePropDeep<Settings, Path>, path: Path extends "" ? string : Path) => void): void;
-export function addSettingsListener(path: string, onUpdate: (newValue: any, path: string) => void) {
-    (onUpdate as SubscriptionCallback)._path = path;
-    subscriptions.add(onUpdate);
+    return SettingsStore.store;
 }
 
 export function migratePluginSettings(name: string, ...oldNames: string[]) {
-    const { plugins } = settings;
+    const { plugins } = SettingsStore.plain;
     if (name in plugins) return;
 
     for (const oldName of oldNames) {
@@ -190,11 +291,67 @@ export function migratePluginSettings(name: string, ...oldNames: string[]) {
             logger.info(`Migrating settings from old name ${oldName} to ${name}`);
             plugins[name] = plugins[oldName];
             delete plugins[oldName];
-            VencordNative.ipc.invoke(
-                IpcEvents.SET_SETTINGS,
-                JSON.stringify(settings, null, 4)
-            );
+            SettingsStore.markAsChanged();
             break;
         }
     }
 }
+
+export function migratePluginSetting(pluginName: string, oldSetting: string, newSetting: string) {
+    const settings = SettingsStore.plain.plugins[pluginName];
+    if (!settings) return;
+
+    if (!Object.hasOwn(settings, oldSetting) || Object.hasOwn(settings, newSetting)) return;
+
+    settings[newSetting] = settings[oldSetting];
+    delete settings[oldSetting];
+    SettingsStore.markAsChanged();
+}
+
+export function definePluginSettings<
+    Def extends SettingsDefinition,
+    Checks extends SettingsChecks<Def>,
+    PrivateSettings extends object = {}
+>(def: Def, checks?: Checks) {
+    if (checks) {
+        for (const [name, check] of Object.entries(checks)) {
+            Object.assign(def[name], check);
+        }
+    }
+
+    const definedSettings: DefinedSettings<Def, PrivateSettings> = {
+        get store() {
+            if (!definedSettings.pluginName) throw new Error("Cannot access settings before plugin is initialized");
+            return Settings.plugins[definedSettings.pluginName] as any;
+        },
+        get plain() {
+            if (!definedSettings.pluginName) throw new Error("Cannot access settings before plugin is initialized");
+            return PlainSettings.plugins[definedSettings.pluginName] as any;
+        },
+        use: settings => useSettings((
+            settings
+                ? settings.map(name => `plugins.${definedSettings.pluginName}.${name}`)
+                : [`plugins.${definedSettings.pluginName}.*`]
+        ) as UseSettings<Settings>[]).plugins[definedSettings.pluginName] as any,
+        def,
+        pluginName: "",
+
+        withPrivateSettings<T extends object>() {
+            return this as DefinedSettings<Def, T>;
+        }
+    };
+
+    return definedSettings;
+}
+
+type UseSettings<T extends object> = ResolveUseSettings<T>[keyof T];
+
+type ResolveUseSettings<T extends object> = {
+    [Key in keyof T]:
+    Key extends string
+    ? T[Key] extends Record<string, unknown>
+    // @ts-expect-error "Type instantiation is excessively deep and possibly infinite"
+    ? `${Key}.*` | (ResolveUseSettings<T[Key]> extends Record<string, string> ? `${Key}.${ResolveUseSettings<T[Key]>[keyof T[Key]]}` : never)
+    : Key
+    : never;
+};
