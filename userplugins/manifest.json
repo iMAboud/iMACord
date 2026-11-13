@@ -1,26 +1,26 @@
 {
-  "version": "v1.0.63",
-  "updatedAt": "2026-11-13T14:41:04.105Z",
+  "version": "v1.0.64",
+  "updatedAt": "2026-11-13T22:57:45.515Z",
   "dist": {
     "renderer.js": {
-      "hash": "e66637e13af195dd2032a10d85ff8462b462e213ad0fa8e860396423f445ea5f",
+      "hash": "22bb0f352f6dbf9c110367f251d1285c3eb6582d1ec210f9bf19d2c23ef9356b",
       "size": 2720782,
-      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.63/renderer.js"
+      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.64/renderer.js"
     },
     "renderer.css": {
       "hash": "eaef83bc3e704ca40782b75792b6731a625fb51519d0753f0475cf69c16a149b",
       "size": 50758,
-      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.63/renderer.css"
+      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.64/renderer.css"
     },
     "patcher.js": {
-      "hash": "48cb424f0d2f25bfacebf51312597b6f27748fc62189d52eab7d2ed3244f1915",
+      "hash": "6615a71ac0393f770d3724d32d99e4b03e963813ac965464af257dd52ecdfa95",
       "size": 43692,
-      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.63/patcher.js"
+      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.64/patcher.js"
     },
     "preload.js": {
-      "hash": "edaa3c35b0d7b19bb509adbc8af3d5031df0d0f4b1a856976e20a192cc2a8315",
+      "hash": "d5eac698917f5d0721cfc58f53f3677e3f5a5aa91c38e275c6d386f360f8ab76",
       "size": 2665,
-      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.63/preload.js"
+      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.64/preload.js"
     }
   },
   "plugins": {
@@ -30,7 +30,7 @@
       "author": "iiMBdr",
       "commit": "a7831b5",
       "message": "Add files via upload",
-      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.63/CustomFont.js"
+      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.64/CustomFont.js"
     },
     "elementHider.js": {
       "hash": "aaa5e04420935e04845a7ca003f800b1903cffca71b4d7dc902b5b7d3ff1f191",
@@ -38,7 +38,7 @@
       "author": "iiMBdr",
       "commit": "e90f0d0",
       "message": "fix: resolve black screen on startup (ElementHider root container wildcard, proxyLazy, NoTrack, & BetterSettings)",
-      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.63/elementHider.js"
+      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.64/elementHider.js"
     },
     "iMAMenu.js": {
       "hash": "5e1b9b6d389abccca38dbd41be13d9c43855b1f4b7ed6bd6092fa33ad23e5c85",
@@ -46,7 +46,7 @@
       "author": "iiMBdr",
       "commit": "6c1469e",
       "message": "fix: upgrade Vencord core to v1.15.16 (Rspack fix), harden ElementHider/iMAMenu & add auto-sync",
-      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.63/iMAMenu.js"
+      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.64/iMAMenu.js"
     },
     "MBdm.js": {
       "hash": "b94455310ad5dda20d120cd60f473adfa464fab3838711becbc63161ebd44743",
@@ -54,7 +54,7 @@
       "author": "iiMBdr",
       "commit": "76430aa",
       "message": "Update MBdm.js",
-      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.63/MBdm.js"
+      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.64/MBdm.js"
     },
     "MultiStreamPopout.js": {
       "hash": "478e0dfe5f829954d1f75f6ebd441c8d2a94a9e1c99050bcba9132be2f698df6",
@@ -62,7 +62,7 @@
       "author": "iMAboud",
       "commit": "36c767f",
       "message": "feat: restrict default plugin auto-enablement to whitelist",
-      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.63/MultiStreamPopout.js"
+      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.64/MultiStreamPopout.js"
     },
     "VoiceReconnect.js": {
       "hash": "cb0d4f400c29e9ce1295f260c6b185a7c01c3a673142bb5ada1544d35fc53b26",
@@ -70,7 +70,7 @@
       "author": "F2isalq",
       "commit": "222cac7",
       "message": "Update VoiceReconnect.js",
-      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.63/VoiceReconnect.js"
+      "url": "https://github.com/iMAboud/iMACord/releases/download/v1.0.64/VoiceReconnect.js"
     }
   },
   "removedPlugins": [

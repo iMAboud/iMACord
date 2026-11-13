@@ -1,714 +1,714 @@
 {
-    "folders": {
-        "accountpanelserverprofile": {
-            "source": "vencord",
-            "addedAt": 1725636803
-        },
-        "addattachments": {
-            "source": "vencord",
-            "addedAt": 1788653289
-        },
-        "alwaysanimate": {
-            "source": "vencord",
-            "addedAt": 1681535403
-        },
-        "alwaysexpandroles": {
-            "source": "vencord",
-            "addedAt": 1724913832
-        },
-        "alwaystrust": {
-            "source": "vencord",
-            "addedAt": 1673488502
-        },
-        "amongick": {
-            "source": "imcord",
-            "addedAt": 1790930302
-        },
-        "anonymisefilenames": {
-            "source": "vencord",
-            "addedAt": 1666185802
-        },
-        "arrpc.web": {
-            "source": "vencord",
-            "addedAt": 1678540712
-        },
-        "autodndwhileplaying.discorddesktop": {
-            "source": "vencord",
-            "addedAt": 1759193497
-        },
-        "betterfolders": {
-            "source": "vencord",
-            "addedAt": 1680450186
-        },
-        "bettergifalttext": {
-            "source": "vencord",
-            "addedAt": 1664363358
-        },
-        "bettergifpicker": {
-            "source": "vencord",
-            "addedAt": 1705374041
-        },
-        "betterrolecontext": {
-            "source": "vencord",
-            "addedAt": 1709837606
-        },
-        "betterroledot": {
-            "source": "vencord",
-            "addedAt": 1668458522
-        },
-        "bettersearch": {
-            "source": "vencord",
-            "addedAt": 1793982866
-        },
-        "bettersessions": {
-            "source": "vencord",
-            "addedAt": 1713906379
-        },
-        "bettersettings": {
-            "source": "vencord",
-            "addedAt": 1710551966
-        },
-        "betteruploadbutton": {
-            "source": "vencord",
-            "addedAt": 1664822605
-        },
-        "biggerstreampreview": {
-            "source": "vencord",
-            "addedAt": 1686936950
-        },
-        "blurnsfw": {
-            "source": "vencord",
-            "addedAt": 1669592562
-        },
-        "calltimer": {
-            "source": "vencord",
-            "addedAt": 1669388387
-        },
-        "charactercounter": {
-            "source": "vencord",
-            "addedAt": 1774664744
-        },
-        "clearurls": {
-            "source": "vencord",
-            "addedAt": 1664980669
-        },
-        "clienttheme": {
-            "source": "vencord",
-            "addedAt": 1700595029
-        },
-        "colorsighted": {
-            "source": "vencord",
-            "addedAt": 1676508374
-        },
-        "consolejanitor": {
-            "source": "vencord",
-            "addedAt": 1719975972
-        },
-        "consoleshortcuts": {
-            "source": "vencord",
-            "addedAt": 1664589487
-        },
-        "copyemojimarkdown": {
-            "source": "vencord",
-            "addedAt": 1717630802
-        },
-        "copyfilecontents": {
-            "source": "vencord",
-            "addedAt": 1725156147
-        },
-        "copyuserurls": {
-            "source": "vencord",
-            "addedAt": 1692966298
-        },
-        "crashhandler": {
-            "source": "vencord",
-            "addedAt": 1677644773
-        },
-        "customcommands": {
-            "source": "vencord",
-            "addedAt": 1773203681
-        },
-        "customidle": {
-            "source": "vencord",
-            "addedAt": 1716075718
-        },
-        "customrpc": {
-            "source": "vencord",
-            "addedAt": 1674082060
-        },
-        "dearrow": {
-            "source": "vencord",
-            "addedAt": 1694279870
-        },
-        "decor": {
-            "source": "vencord",
-            "addedAt": 1701321050
-        },
-        "devcompanion.dev": {
-            "source": "vencord",
-            "addedAt": 1678490749
-        },
-        "directfiledownload.desktop": {
-            "source": "vencord",
-            "addedAt": 1792353455
-        },
-        "disablecallidle": {
-            "source": "vencord",
-            "addedAt": 1707512380
-        },
-        "dontroundmytimestamps": {
-            "source": "vencord",
-            "addedAt": 1716862962
-        },
-        "experiments": {
-            "source": "vencord",
-            "addedAt": 1661803522
-        },
-        "expressionmanager": {
-            "source": "vencord",
-            "addedAt": 1793141957
-        },
-        "f8break": {
-            "source": "vencord",
-            "addedAt": 1679111659
-        },
-        "fakenitro": {
-            "source": "vencord",
-            "addedAt": 1668445541
-        },
-        "fakeprofilethemes": {
-            "source": "vencord",
-            "addedAt": 1680444739
-        },
-        "favemojifirst": {
-            "source": "vencord",
-            "addedAt": 1684291095
-        },
-        "fixcodeblockgap": {
-            "source": "vencord",
-            "addedAt": 1704506723
-        },
-        "fiximagesquality": {
-            "source": "vencord",
-            "addedAt": 1700854350
-        },
-        "fixspotifyembeds.desktop": {
-            "source": "vencord",
-            "addedAt": 1692629925
-        },
-        "fixyoutubeembeds.desktop": {
-            "source": "vencord",
-            "addedAt": 1705626455
-        },
-        "forceownercrown": {
-            "source": "vencord",
-            "addedAt": 1666711925
-        },
-        "friendinvites": {
-            "source": "vencord",
-            "addedAt": 1668378850
-        },
-        "fullsearchcontext": {
-            "source": "vencord",
-            "addedAt": 1726688026
-        },
-        "gameactivitytoggle": {
-            "source": "vencord",
-            "addedAt": 1680480824
-        },
-        "gifpaste": {
-            "source": "vencord",
-            "addedAt": 1680184700
-        },
-        "gifproviderswitcher": {
-            "source": "vencord",
-            "addedAt": 1791330501
-        },
-        "greetstickerpicker": {
-            "source": "vencord",
-            "addedAt": 1691172109
-        },
-        "hideattachments": {
-            "source": "vencord",
-            "addedAt": 1669248013
-        },
-        "ignoreactivities": {
-            "source": "vencord",
-            "addedAt": 1666649140
-        },
-        "ilovespam": {
-            "source": "vencord",
-            "addedAt": 1664591021
-        },
-        "imagefilename": {
-            "source": "vencord",
-            "addedAt": 1755614462
-        },
-        "imagelink": {
-            "source": "vencord",
-            "addedAt": 1714768934
-        },
-        "imagezoom": {
-            "source": "vencord",
-            "addedAt": 1680743171
-        },
-        "imamenu": {
-            "source": "imcord",
-            "addedAt": 1790930302
-        },
-        "implicitrelationships": {
-            "source": "vencord",
-            "addedAt": 1713930113
-        },
-        "irccolors": {
-            "source": "vencord",
-            "addedAt": 1737945240
-        },
-        "jumptotop": {
-            "source": "vencord",
-            "addedAt": 1792680008
-        },
-        "keepcurrentchannel": {
-            "source": "vencord",
-            "addedAt": 1669168305
-        },
-        "loadingquotes": {
-            "source": "vencord",
-            "addedAt": 1667076803
-        },
-        "membercount": {
-            "source": "vencord",
-            "addedAt": 1669660186
-        },
-        "mentionavatars": {
-            "source": "vencord",
-            "addedAt": 1720890862
-        },
-        "messageclickactions": {
-            "source": "vencord",
-            "addedAt": 1679365142
-        },
-        "messagelatency": {
-            "source": "vencord",
-            "addedAt": 1715131532
-        },
-        "messagelinkembeds": {
-            "source": "vencord",
-            "addedAt": 1671057898
-        },
-        "messagelogger": {
-            "source": "vencord",
-            "addedAt": 1668377612
-        },
-        "morequickreactions": {
-            "source": "vencord",
-            "addedAt": 1766881552
-        },
-        "multistreampopout": {
-            "source": "imcord",
-            "addedAt": 1790930302
-        },
-        "musicrichpresence": {
-            "source": "vencord",
-            "addedAt": 1784131419
-        },
-        "mutedserversactivitybadge": {
-            "source": "vencord",
-            "addedAt": 1793393961
-        },
-        "mutualgroupdms": {
-            "source": "vencord",
-            "addedAt": 1686793155
-        },
-        "newguildsettings": {
-            "source": "vencord",
-            "addedAt": 1708274546
-        },
-        "noblockedmessages": {
-            "source": "vencord",
-            "addedAt": 1664894781
-        },
-        "nodeeplinks.web": {
-            "source": "vencord",
-            "addedAt": 1744066145
-        },
-        "nodevtoolswarning": {
-            "source": "vencord",
-            "addedAt": 1668445541
-        },
-        "nof1": {
-            "source": "vencord",
-            "addedAt": 1665518092
-        },
-        "nomaskedurlpaste": {
-            "source": "vencord",
-            "addedAt": 1724449007
-        },
-        "nomiddleclickpaste": {
-            "source": "vencord",
-            "addedAt": 1777891678
-        },
-        "nomosaic": {
-            "source": "vencord",
-            "addedAt": 1697163036
-        },
-        "noonboardingdelay": {
-            "source": "vencord",
-            "addedAt": 1717639304
-        },
-        "nopendingcount": {
-            "source": "vencord",
-            "addedAt": 1685547666
-        },
-        "noprofilethemes": {
-            "source": "vencord",
-            "addedAt": 1685551652
-        },
-        "noreplymention": {
-            "source": "vencord",
-            "addedAt": 1664676514
-        },
-        "noserveremojis": {
-            "source": "vencord",
-            "addedAt": 1715728710
-        },
-        "nosystembadge.discorddesktop": {
-            "source": "vencord",
-            "addedAt": 1680660582
-        },
-        "notificationvolume": {
-            "source": "vencord",
-            "addedAt": 1701900934
-        },
-        "notypinganimation": {
-            "source": "vencord",
-            "addedAt": 1697667254
-        },
-        "nounblocktojump": {
-            "source": "vencord",
-            "addedAt": 1668998415
-        },
-        "oneko": {
-            "source": "vencord",
-            "addedAt": 1668892396
-        },
-        "onepingperdm": {
-            "source": "vencord",
-            "addedAt": 1696290794
-        },
-        "openinapp": {
-            "source": "vencord",
-            "addedAt": 1688006008
-        },
-        "overrideforumdefaults": {
-            "source": "vencord",
-            "addedAt": 1711070184
-        },
-        "pauseinvitesforever": {
-            "source": "vencord",
-            "addedAt": 1714691393
-        },
-        "permissionfreewill": {
-            "source": "vencord",
-            "addedAt": 1696289217
-        },
-        "permissionsviewer": {
-            "source": "vencord",
-            "addedAt": 1684110784
-        },
-        "petpet": {
-            "source": "vencord",
-            "addedAt": 1665545734
-        },
-        "pictureinpicture": {
-            "source": "vencord",
-            "addedAt": 1694138264
-        },
-        "pindms": {
-            "source": "vencord",
-            "addedAt": 1681518406
-        },
-        "plainfoldericon": {
-            "source": "vencord",
-            "addedAt": 1664591021
-        },
-        "platformindicators": {
-            "source": "vencord",
-            "addedAt": 1669041870
-        },
-        "previewmessage": {
-            "source": "vencord",
-            "addedAt": 1692400750
-        },
-        "quickmention": {
-            "source": "vencord",
-            "addedAt": 1668870671
-        },
-        "quickreply": {
-            "source": "vencord",
-            "addedAt": 1665250040
-        },
-        "reacterrordecoder": {
-            "source": "vencord",
-            "addedAt": 1686616585
-        },
-        "readallnotificationsbutton": {
-            "source": "vencord",
-            "addedAt": 1668866088
-        },
-        "relationshipnotifier": {
-            "source": "vencord",
-            "addedAt": 1680239255
-        },
-        "replacegooglesearch": {
-            "source": "vencord",
-            "addedAt": 1715930234
-        },
-        "replytimestamp": {
-            "source": "vencord",
-            "addedAt": 1715131929
-        },
-        "revealallspoilers": {
-            "source": "vencord",
-            "addedAt": 1675255082
-        },
-        "reverseimagesearch": {
-            "source": "vencord",
-            "addedAt": 1667049934
-        },
-        "reviewdb": {
-            "source": "vencord",
-            "addedAt": 1668555646
-        },
-        "rolecoloreverywhere": {
-            "source": "vencord",
-            "addedAt": 1676512242
-        },
-        "secretringtone": {
-            "source": "vencord",
-            "addedAt": 1691799780
-        },
-        "sendtimestamps": {
-            "source": "vencord",
-            "addedAt": 1681526538
-        },
-        "serverinfo": {
-            "source": "vencord",
-            "addedAt": 1717623927
-        },
-        "serverlistindicators": {
-            "source": "vencord",
-            "addedAt": 1669677907
-        },
-        "shikicodeblocks.desktop": {
-            "source": "vencord",
-            "addedAt": 1695089244
-        },
-        "showallmessagebuttons": {
-            "source": "vencord",
-            "addedAt": 1683247646
-        },
-        "showconnections": {
-            "source": "vencord",
-            "addedAt": 1682808567
-        },
-        "showhiddenchannels": {
-            "source": "vencord",
-            "addedAt": 1666518261
-        },
-        "showhiddenthings": {
-            "source": "vencord",
-            "addedAt": 1713829571
-        },
-        "showmeyourname": {
-            "source": "vencord",
-            "addedAt": 1681523902
-        },
-        "showtimeoutduration": {
-            "source": "vencord",
-            "addedAt": 1715217007
-        },
-        "silentmessagetoggle": {
-            "source": "vencord",
-            "addedAt": 1678321168
-        },
-        "silenttyping": {
-            "source": "vencord",
-            "addedAt": 1664481721
-        },
-        "sortfriendrequests": {
-            "source": "vencord",
-            "addedAt": 1670539992
-        },
-        "spotifycontrols": {
-            "source": "vencord",
-            "addedAt": 1667856509
-        },
-        "spotifycrack": {
-            "source": "vencord",
-            "addedAt": 1668445541
-        },
-        "spotifysharecommands": {
-            "source": "vencord",
-            "addedAt": 1668445541
-        },
-        "startuptimings": {
-            "source": "vencord",
-            "addedAt": 1667642945
-        },
-        "stickerpaste": {
-            "source": "vencord",
-            "addedAt": 1725157987
-        },
-        "streamermodeonstream": {
-            "source": "vencord",
-            "addedAt": 1713930709
-        },
-        "superreactiontweaks": {
-            "source": "vencord",
-            "addedAt": 1699501355
-        },
-        "textreplace": {
-            "source": "vencord",
-            "addedAt": 1682817548
-        },
-        "themeattributes": {
-            "source": "vencord",
-            "addedAt": 1693439393
-        },
-        "translate": {
-            "source": "vencord",
-            "addedAt": 1683753244
-        },
-        "typingindicator": {
-            "source": "vencord",
-            "addedAt": 1676516277
-        },
-        "typingtweaks": {
-            "source": "vencord",
-            "addedAt": 1674947193
-        },
-        "unindent": {
-            "source": "vencord",
-            "addedAt": 1661979858
-        },
-        "unlockedavatarzoom": {
-            "source": "vencord",
-            "addedAt": 1712627788
-        },
-        "unsuppressembeds": {
-            "source": "vencord",
-            "addedAt": 1686791914
-        },
-        "usermessagespronouns": {
-            "source": "vencord",
-            "addedAt": 1729150815
-        },
-        "uservoiceshow": {
-            "source": "vencord",
-            "addedAt": 1680744174
-        },
-        "usrbg": {
-            "source": "vencord",
-            "addedAt": 1681769898
-        },
-        "validreply": {
-            "source": "vencord",
-            "addedAt": 1715739029
-        },
-        "validuser": {
-            "source": "vencord",
-            "addedAt": 1683753208
-        },
-        "vcdoubleclick": {
-            "source": "vencord",
-            "addedAt": 1666299988
-        },
-        "vcnarrator": {
-            "source": "vencord",
-            "addedAt": 1674614521
-        },
-        "vencordtoolbox": {
-            "source": "vencord",
-            "addedAt": 1682988938
-        },
-        "viewicons": {
-            "source": "vencord",
-            "addedAt": 1662138352
-        },
-        "viewraw": {
-            "source": "vencord",
-            "addedAt": 1669995532
-        },
-        "voicedownload": {
-            "source": "vencord",
-            "addedAt": 1715132697
-        },
-        "voicemessages": {
-            "source": "vencord",
-            "addedAt": 1690327624
-        },
-        "volumebooster": {
-            "source": "vencord",
-            "addedAt": 1669155774
-        },
-        "webcontextmenus.web": {
-            "source": "vencord",
-            "addedAt": 1678540712
-        },
-        "webkeybinds.web": {
-            "source": "vencord",
-            "addedAt": 1688253757
-        },
-        "webpwa.browser": {
-            "source": "vencord",
-            "addedAt": 1786396737
-        },
-        "webscreenshare.browser": {
-            "source": "vencord",
-            "addedAt": 1787250904
-        },
-        "webscreensharefixes.web": {
-            "source": "vencord",
-            "addedAt": 1715131062
-        },
-        "whoreacted": {
-            "source": "vencord",
-            "addedAt": 1668810713
-        },
-        "xsoverlay": {
-            "source": "vencord",
-            "addedAt": 1722376091
-        },
-        "youtubeadblock.desktop": {
-            "source": "vencord",
-            "addedAt": 1722516558
-        }
+  "folders": {
+    "accountpanelserverprofile": {
+      "source": "vencord",
+      "addedAt": 1725636803
     },
-    "userPlugins": {
-        "customfont": {
-            "source": "imcord",
-            "addedAt": 1790936173
-        },
-        "mbdm": {
-            "source": "imcord",
-            "addedAt": 1791056834
-        },
-        "multistreampopout": {
-            "source": "imcord",
-            "addedAt": 1790924006
-        },
-        "voicereconnect": {
-            "source": "imcord",
-            "addedAt": 1790936165
-        },
-        "elementhider": {
-            "source": "imcord",
-            "addedAt": 1791917497
-        },
-        "imamenu": {
-            "source": "imcord",
-            "addedAt": 1790924006
-        }
+    "addattachments": {
+      "source": "vencord",
+      "addedAt": 1788653289
+    },
+    "alwaysanimate": {
+      "source": "vencord",
+      "addedAt": 1681535403
+    },
+    "alwaysexpandroles": {
+      "source": "vencord",
+      "addedAt": 1724913832
+    },
+    "alwaystrust": {
+      "source": "vencord",
+      "addedAt": 1673488502
+    },
+    "amongick": {
+      "source": "imcord",
+      "addedAt": 1790930302
+    },
+    "anonymisefilenames": {
+      "source": "vencord",
+      "addedAt": 1666185802
+    },
+    "arrpc.web": {
+      "source": "vencord",
+      "addedAt": 1678540712
+    },
+    "autodndwhileplaying.discorddesktop": {
+      "source": "vencord",
+      "addedAt": 1759193497
+    },
+    "betterfolders": {
+      "source": "vencord",
+      "addedAt": 1680450186
+    },
+    "bettergifalttext": {
+      "source": "vencord",
+      "addedAt": 1664363358
+    },
+    "bettergifpicker": {
+      "source": "vencord",
+      "addedAt": 1705374041
+    },
+    "betterrolecontext": {
+      "source": "vencord",
+      "addedAt": 1709837606
+    },
+    "betterroledot": {
+      "source": "vencord",
+      "addedAt": 1668458522
+    },
+    "bettersearch": {
+      "source": "vencord",
+      "addedAt": 1793982866
+    },
+    "bettersessions": {
+      "source": "vencord",
+      "addedAt": 1713906379
+    },
+    "bettersettings": {
+      "source": "vencord",
+      "addedAt": 1710551966
+    },
+    "betteruploadbutton": {
+      "source": "vencord",
+      "addedAt": 1664822605
+    },
+    "biggerstreampreview": {
+      "source": "vencord",
+      "addedAt": 1686936950
+    },
+    "blurnsfw": {
+      "source": "vencord",
+      "addedAt": 1669592562
+    },
+    "calltimer": {
+      "source": "vencord",
+      "addedAt": 1669388387
+    },
+    "charactercounter": {
+      "source": "vencord",
+      "addedAt": 1774664744
+    },
+    "clearurls": {
+      "source": "vencord",
+      "addedAt": 1664980669
+    },
+    "clienttheme": {
+      "source": "vencord",
+      "addedAt": 1700595029
+    },
+    "colorsighted": {
+      "source": "vencord",
+      "addedAt": 1676508374
+    },
+    "consolejanitor": {
+      "source": "vencord",
+      "addedAt": 1719975972
+    },
+    "consoleshortcuts": {
+      "source": "vencord",
+      "addedAt": 1664589487
+    },
+    "copyemojimarkdown": {
+      "source": "vencord",
+      "addedAt": 1717630802
+    },
+    "copyfilecontents": {
+      "source": "vencord",
+      "addedAt": 1725156147
+    },
+    "copyuserurls": {
+      "source": "vencord",
+      "addedAt": 1692966298
+    },
+    "crashhandler": {
+      "source": "vencord",
+      "addedAt": 1677644773
+    },
+    "customcommands": {
+      "source": "vencord",
+      "addedAt": 1773203681
+    },
+    "customidle": {
+      "source": "vencord",
+      "addedAt": 1716075718
+    },
+    "customrpc": {
+      "source": "vencord",
+      "addedAt": 1674082060
+    },
+    "dearrow": {
+      "source": "vencord",
+      "addedAt": 1694279870
+    },
+    "decor": {
+      "source": "vencord",
+      "addedAt": 1701321050
+    },
+    "devcompanion.dev": {
+      "source": "vencord",
+      "addedAt": 1678490749
+    },
+    "directfiledownload.desktop": {
+      "source": "vencord",
+      "addedAt": 1792353455
+    },
+    "disablecallidle": {
+      "source": "vencord",
+      "addedAt": 1707512380
+    },
+    "dontroundmytimestamps": {
+      "source": "vencord",
+      "addedAt": 1716862962
+    },
+    "experiments": {
+      "source": "vencord",
+      "addedAt": 1661803522
+    },
+    "expressionmanager": {
+      "source": "vencord",
+      "addedAt": 1793141957
+    },
+    "f8break": {
+      "source": "vencord",
+      "addedAt": 1679111659
+    },
+    "fakenitro": {
+      "source": "vencord",
+      "addedAt": 1668445541
+    },
+    "fakeprofilethemes": {
+      "source": "vencord",
+      "addedAt": 1680444739
+    },
+    "favemojifirst": {
+      "source": "vencord",
+      "addedAt": 1684291095
+    },
+    "fixcodeblockgap": {
+      "source": "vencord",
+      "addedAt": 1704506723
+    },
+    "fiximagesquality": {
+      "source": "vencord",
+      "addedAt": 1700854350
+    },
+    "fixspotifyembeds.desktop": {
+      "source": "vencord",
+      "addedAt": 1692629925
+    },
+    "fixyoutubeembeds.desktop": {
+      "source": "vencord",
+      "addedAt": 1705626455
+    },
+    "forceownercrown": {
+      "source": "vencord",
+      "addedAt": 1666711925
+    },
+    "friendinvites": {
+      "source": "vencord",
+      "addedAt": 1668378850
+    },
+    "fullsearchcontext": {
+      "source": "vencord",
+      "addedAt": 1726688026
+    },
+    "gameactivitytoggle": {
+      "source": "vencord",
+      "addedAt": 1680480824
+    },
+    "gifpaste": {
+      "source": "vencord",
+      "addedAt": 1680184700
+    },
+    "gifproviderswitcher": {
+      "source": "vencord",
+      "addedAt": 1791330501
+    },
+    "greetstickerpicker": {
+      "source": "vencord",
+      "addedAt": 1691172109
+    },
+    "hideattachments": {
+      "source": "vencord",
+      "addedAt": 1669248013
+    },
+    "ignoreactivities": {
+      "source": "vencord",
+      "addedAt": 1666649140
+    },
+    "ilovespam": {
+      "source": "vencord",
+      "addedAt": 1664591021
+    },
+    "imagefilename": {
+      "source": "vencord",
+      "addedAt": 1755614462
+    },
+    "imagelink": {
+      "source": "vencord",
+      "addedAt": 1714768934
+    },
+    "imagezoom": {
+      "source": "vencord",
+      "addedAt": 1680743171
+    },
+    "imamenu": {
+      "source": "imcord",
+      "addedAt": 1790930302
+    },
+    "implicitrelationships": {
+      "source": "vencord",
+      "addedAt": 1713930113
+    },
+    "irccolors": {
+      "source": "vencord",
+      "addedAt": 1737945240
+    },
+    "jumptotop": {
+      "source": "vencord",
+      "addedAt": 1792680008
+    },
+    "keepcurrentchannel": {
+      "source": "vencord",
+      "addedAt": 1669168305
+    },
+    "loadingquotes": {
+      "source": "vencord",
+      "addedAt": 1667076803
+    },
+    "membercount": {
+      "source": "vencord",
+      "addedAt": 1669660186
+    },
+    "mentionavatars": {
+      "source": "vencord",
+      "addedAt": 1720890862
+    },
+    "messageclickactions": {
+      "source": "vencord",
+      "addedAt": 1679365142
+    },
+    "messagelatency": {
+      "source": "vencord",
+      "addedAt": 1715131532
+    },
+    "messagelinkembeds": {
+      "source": "vencord",
+      "addedAt": 1671057898
+    },
+    "messagelogger": {
+      "source": "vencord",
+      "addedAt": 1668377612
+    },
+    "morequickreactions": {
+      "source": "vencord",
+      "addedAt": 1766881552
+    },
+    "multistreampopout": {
+      "source": "imcord",
+      "addedAt": 1790930302
+    },
+    "musicrichpresence": {
+      "source": "vencord",
+      "addedAt": 1784131419
+    },
+    "mutedserversactivitybadge": {
+      "source": "vencord",
+      "addedAt": 1793393961
+    },
+    "mutualgroupdms": {
+      "source": "vencord",
+      "addedAt": 1686793155
+    },
+    "newguildsettings": {
+      "source": "vencord",
+      "addedAt": 1708274546
+    },
+    "noblockedmessages": {
+      "source": "vencord",
+      "addedAt": 1664894781
+    },
+    "nodeeplinks.web": {
+      "source": "vencord",
+      "addedAt": 1744066145
+    },
+    "nodevtoolswarning": {
+      "source": "vencord",
+      "addedAt": 1668445541
+    },
+    "nof1": {
+      "source": "vencord",
+      "addedAt": 1665518092
+    },
+    "nomaskedurlpaste": {
+      "source": "vencord",
+      "addedAt": 1724449007
+    },
+    "nomiddleclickpaste": {
+      "source": "vencord",
+      "addedAt": 1777891678
+    },
+    "nomosaic": {
+      "source": "vencord",
+      "addedAt": 1697163036
+    },
+    "noonboardingdelay": {
+      "source": "vencord",
+      "addedAt": 1717639304
+    },
+    "nopendingcount": {
+      "source": "vencord",
+      "addedAt": 1685547666
+    },
+    "noprofilethemes": {
+      "source": "vencord",
+      "addedAt": 1685551652
+    },
+    "noreplymention": {
+      "source": "vencord",
+      "addedAt": 1664676514
+    },
+    "noserveremojis": {
+      "source": "vencord",
+      "addedAt": 1715728710
+    },
+    "nosystembadge.discorddesktop": {
+      "source": "vencord",
+      "addedAt": 1680660582
+    },
+    "notificationvolume": {
+      "source": "vencord",
+      "addedAt": 1701900934
+    },
+    "notypinganimation": {
+      "source": "vencord",
+      "addedAt": 1697667254
+    },
+    "nounblocktojump": {
+      "source": "vencord",
+      "addedAt": 1668998415
+    },
+    "oneko": {
+      "source": "vencord",
+      "addedAt": 1668892396
+    },
+    "onepingperdm": {
+      "source": "vencord",
+      "addedAt": 1696290794
+    },
+    "openinapp": {
+      "source": "vencord",
+      "addedAt": 1688006008
+    },
+    "overrideforumdefaults": {
+      "source": "vencord",
+      "addedAt": 1711070184
+    },
+    "pauseinvitesforever": {
+      "source": "vencord",
+      "addedAt": 1714691393
+    },
+    "permissionfreewill": {
+      "source": "vencord",
+      "addedAt": 1696289217
+    },
+    "permissionsviewer": {
+      "source": "vencord",
+      "addedAt": 1684110784
+    },
+    "petpet": {
+      "source": "vencord",
+      "addedAt": 1665545734
+    },
+    "pictureinpicture": {
+      "source": "vencord",
+      "addedAt": 1694138264
+    },
+    "pindms": {
+      "source": "vencord",
+      "addedAt": 1681518406
+    },
+    "plainfoldericon": {
+      "source": "vencord",
+      "addedAt": 1664591021
+    },
+    "platformindicators": {
+      "source": "vencord",
+      "addedAt": 1669041870
+    },
+    "previewmessage": {
+      "source": "vencord",
+      "addedAt": 1692400750
+    },
+    "quickmention": {
+      "source": "vencord",
+      "addedAt": 1668870671
+    },
+    "quickreply": {
+      "source": "vencord",
+      "addedAt": 1665250040
+    },
+    "reacterrordecoder": {
+      "source": "vencord",
+      "addedAt": 1686616585
+    },
+    "readallnotificationsbutton": {
+      "source": "vencord",
+      "addedAt": 1668866088
+    },
+    "relationshipnotifier": {
+      "source": "vencord",
+      "addedAt": 1680239255
+    },
+    "replacegooglesearch": {
+      "source": "vencord",
+      "addedAt": 1715930234
+    },
+    "replytimestamp": {
+      "source": "vencord",
+      "addedAt": 1715131929
+    },
+    "revealallspoilers": {
+      "source": "vencord",
+      "addedAt": 1675255082
+    },
+    "reverseimagesearch": {
+      "source": "vencord",
+      "addedAt": 1667049934
+    },
+    "reviewdb": {
+      "source": "vencord",
+      "addedAt": 1668555646
+    },
+    "rolecoloreverywhere": {
+      "source": "vencord",
+      "addedAt": 1676512242
+    },
+    "secretringtone": {
+      "source": "vencord",
+      "addedAt": 1691799780
+    },
+    "sendtimestamps": {
+      "source": "vencord",
+      "addedAt": 1681526538
+    },
+    "serverinfo": {
+      "source": "vencord",
+      "addedAt": 1717623927
+    },
+    "serverlistindicators": {
+      "source": "vencord",
+      "addedAt": 1669677907
+    },
+    "shikicodeblocks.desktop": {
+      "source": "vencord",
+      "addedAt": 1695089244
+    },
+    "showallmessagebuttons": {
+      "source": "vencord",
+      "addedAt": 1683247646
+    },
+    "showconnections": {
+      "source": "vencord",
+      "addedAt": 1682808567
+    },
+    "showhiddenchannels": {
+      "source": "vencord",
+      "addedAt": 1666518261
+    },
+    "showhiddenthings": {
+      "source": "vencord",
+      "addedAt": 1713829571
+    },
+    "showmeyourname": {
+      "source": "vencord",
+      "addedAt": 1681523902
+    },
+    "showtimeoutduration": {
+      "source": "vencord",
+      "addedAt": 1715217007
+    },
+    "silentmessagetoggle": {
+      "source": "vencord",
+      "addedAt": 1678321168
+    },
+    "silenttyping": {
+      "source": "vencord",
+      "addedAt": 1664481721
+    },
+    "sortfriendrequests": {
+      "source": "vencord",
+      "addedAt": 1670539992
+    },
+    "spotifycontrols": {
+      "source": "vencord",
+      "addedAt": 1667856509
+    },
+    "spotifycrack": {
+      "source": "vencord",
+      "addedAt": 1668445541
+    },
+    "spotifysharecommands": {
+      "source": "vencord",
+      "addedAt": 1668445541
+    },
+    "startuptimings": {
+      "source": "vencord",
+      "addedAt": 1667642945
+    },
+    "stickerpaste": {
+      "source": "vencord",
+      "addedAt": 1725157987
+    },
+    "streamermodeonstream": {
+      "source": "vencord",
+      "addedAt": 1713930709
+    },
+    "superreactiontweaks": {
+      "source": "vencord",
+      "addedAt": 1699501355
+    },
+    "textreplace": {
+      "source": "vencord",
+      "addedAt": 1682817548
+    },
+    "themeattributes": {
+      "source": "vencord",
+      "addedAt": 1693439393
+    },
+    "translate": {
+      "source": "vencord",
+      "addedAt": 1683753244
+    },
+    "typingindicator": {
+      "source": "vencord",
+      "addedAt": 1676516277
+    },
+    "typingtweaks": {
+      "source": "vencord",
+      "addedAt": 1674947193
+    },
+    "unindent": {
+      "source": "vencord",
+      "addedAt": 1661979858
+    },
+    "unlockedavatarzoom": {
+      "source": "vencord",
+      "addedAt": 1712627788
+    },
+    "unsuppressembeds": {
+      "source": "vencord",
+      "addedAt": 1686791914
+    },
+    "usermessagespronouns": {
+      "source": "vencord",
+      "addedAt": 1729150815
+    },
+    "uservoiceshow": {
+      "source": "vencord",
+      "addedAt": 1680744174
+    },
+    "usrbg": {
+      "source": "vencord",
+      "addedAt": 1681769898
+    },
+    "validreply": {
+      "source": "vencord",
+      "addedAt": 1715739029
+    },
+    "validuser": {
+      "source": "vencord",
+      "addedAt": 1683753208
+    },
+    "vcdoubleclick": {
+      "source": "vencord",
+      "addedAt": 1666299988
+    },
+    "vcnarrator": {
+      "source": "vencord",
+      "addedAt": 1674614521
+    },
+    "vencordtoolbox": {
+      "source": "vencord",
+      "addedAt": 1682988938
+    },
+    "viewicons": {
+      "source": "vencord",
+      "addedAt": 1662138352
+    },
+    "viewraw": {
+      "source": "vencord",
+      "addedAt": 1669995532
+    },
+    "voicedownload": {
+      "source": "vencord",
+      "addedAt": 1715132697
+    },
+    "voicemessages": {
+      "source": "vencord",
+      "addedAt": 1690327624
+    },
+    "volumebooster": {
+      "source": "vencord",
+      "addedAt": 1669155774
+    },
+    "webcontextmenus.web": {
+      "source": "vencord",
+      "addedAt": 1678540712
+    },
+    "webkeybinds.web": {
+      "source": "vencord",
+      "addedAt": 1688253757
+    },
+    "webpwa.browser": {
+      "source": "vencord",
+      "addedAt": 1786396737
+    },
+    "webscreenshare.browser": {
+      "source": "vencord",
+      "addedAt": 1787250904
+    },
+    "webscreensharefixes.web": {
+      "source": "vencord",
+      "addedAt": 1715131062
+    },
+    "whoreacted": {
+      "source": "vencord",
+      "addedAt": 1668810713
+    },
+    "xsoverlay": {
+      "source": "vencord",
+      "addedAt": 1722376091
+    },
+    "youtubeadblock.desktop": {
+      "source": "vencord",
+      "addedAt": 1722516558
     }
+  },
+  "userPlugins": {
+    "customfont": {
+      "source": "imcord",
+      "addedAt": 1790936173
+    },
+    "elementhider": {
+      "source": "imcord",
+      "addedAt": 1791917497
+    },
+    "imamenu": {
+      "source": "imcord",
+      "addedAt": 1790924006
+    },
+    "mbdm": {
+      "source": "imcord",
+      "addedAt": 1791056834
+    },
+    "multistreampopout": {
+      "source": "imcord",
+      "addedAt": 1790924006
+    },
+    "voicereconnect": {
+      "source": "imcord",
+      "addedAt": 1790936165
+    }
+  }
 }
