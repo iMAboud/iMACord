@@ -33,6 +33,8 @@ interface Props {
     setEnabled: (enabled: boolean) => void;
     disabled?: boolean;
     isNew?: boolean;
+    isPinned?: boolean;
+    sourceBadge?: ReactNode;
     onMouseEnter?: MouseEventHandler<HTMLDivElement>;
     onMouseLeave?: MouseEventHandler<HTMLDivElement>;
 
@@ -41,13 +43,13 @@ interface Props {
     author?: ReactNode;
 }
 
-export function AddonCard({ disabled, isNew, name, infoButton, footer, author, enabled, setEnabled, description, onMouseEnter, onMouseLeave }: Props) {
+export function AddonCard({ disabled, isNew, isPinned, sourceBadge, name, infoButton, footer, author, enabled, setEnabled, description, onMouseEnter, onMouseLeave }: Props) {
     const titleRef = useRef<HTMLDivElement>(null);
     const titleContainerRef = useRef<HTMLDivElement>(null);
 
     return (
         <div
-            className={cl("card", { "card-disabled": disabled })}
+            className={cl("card", { "card-disabled": disabled, "card-pinned": isPinned })}
             onMouseEnter={onMouseEnter}
             onMouseLeave={onMouseLeave}
         >
@@ -69,6 +71,7 @@ export function AddonCard({ disabled, isNew, name, infoButton, footer, author, e
                                 {name}
                             </div>
                         </div>
+                        {sourceBadge}
                     </Text>
 
                     {!!author && (

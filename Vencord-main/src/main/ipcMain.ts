@@ -24,7 +24,7 @@ import { debounce } from "@shared/debounce";
 import { IpcEvents } from "@shared/IpcEvents";
 import { BrowserWindow, ipcMain, nativeTheme, shell, systemPreferences } from "electron";
 import { FSWatcher, mkdirSync, readFileSync, watch, writeFileSync } from "fs";
-import { open, readdir, readFile, unlink, writeFile } from "fs/promises";
+import { open, readdir, readFile, stat, unlink, writeFile } from "fs/promises";
 import { release } from "os";
 import { join } from "path";
 
@@ -146,17 +146,24 @@ ipcMain.handle(IpcEvents.OPEN_USER_PLUGINS_FOLDER, () => shell.openPath(USER_PLU
 
 ipcMain.handle(IpcEvents.GET_USER_PLUGINS_LIST, async () => {
     const files = await readdir(USER_PLUGINS_DIR).catch(() => []);
-    const plugins: Array<{ name: string; code: string; filename: string }> = [];
+    const plugins: Array<{ name: string; code: string; filename: string; addedAt?: number }> = [];
     for (const fileName of files) {
         if (!fileName.endsWith(".js")) continue;
         const safePath = ensureSafePath(USER_PLUGINS_DIR, fileName);
         if (!safePath) continue;
         const code = await readFile(safePath, "utf-8").catch(() => null);
         if (code) {
+            let addedAt: number | undefined;
+            try {
+                const fileStat = await stat(safePath);
+                const rawMs = fileStat.birthtimeMs && fileStat.birthtimeMs > 0 ? fileStat.birthtimeMs : fileStat.mtimeMs;
+                if (rawMs > 0) addedAt = Math.floor(rawMs / 1000);
+            } catch { }
             plugins.push({
                 name: fileName.replace(/\.js$/, ""),
                 code,
-                filename: fileName
+                filename: fileName,
+                addedAt
             });
         }
     }

@@ -88,6 +88,9 @@ function ReloadRequiredCard({ required }: { required: boolean; }) {
 
 const enum SearchStatus {
     ALL,
+    PINNED,
+    IMCORD,
+    VENCORD,
     FAVORITES,
     ENABLED,
     DISABLED,
@@ -96,6 +99,9 @@ const enum SearchStatus {
     USER_PLUGINS,
     API_PLUGINS
 }
+
+const NEW_RELEASE_WINDOW_SECONDS = 60 * 60 * 24 * 21;
+const NEW_SEEN_WINDOW_SECONDS = 60 * 60 * 24 * 2;
 
 function ExcludedPluginsList({ search }: { search: string; }) {
     const matchingExcludedPlugins = search
@@ -136,7 +142,7 @@ function PluginSettings() {
     const changeRef = useRef<ChangeList<string>>(null);
     const changes = changeRef.current ??= new ChangeList<string>();
 
-    const [, forceUpdate] = React.useReducer(x => x + 1, 0);
+    const [userPluginRevision, forceUpdate] = React.useReducer(x => x + 1, 0);
     React.useEffect(() => addUserPluginsListener(forceUpdate), []);
 
     useCleanupEffect(() => {
@@ -178,32 +184,82 @@ function PluginSettings() {
     }, []);
 
     const pluginCount = Object.keys(Plugins).length;
+
+    const [discoveredNewPlugins] = useAwaiter(() => DataStore.get("Vencord_existingPlugins").then((cachedPlugins: Record<string, number> | undefined) => {
+        const now = Date.now() / 1000;
+        const existingTimestamps: Record<string, number> = {};
+        const allPluginNames = Object.values(Plugins).map(plugin => plugin.name);
+
+        const newlySeen: string[] = [];
+        for (const p of allPluginNames) {
+            const time = existingTimestamps[p] = cachedPlugins?.[p] ?? now;
+            if ((time + NEW_SEEN_WINDOW_SECONDS) > now) {
+                newlySeen.push(p);
+            }
+        }
+        DataStore.set("Vencord_existingPlugins", existingTimestamps);
+
+        return lodash.isEqual(newlySeen, allPluginNames) ? [] : newlySeen;
+    }), { deps: [pluginCount, userPluginRevision], fallbackValue: [] });
+
+    const newPluginSet = useMemo(() => {
+        const now = Date.now() / 1000;
+        const set = new Set<string>(discoveredNewPlugins ?? []);
+        for (const p of Object.values(Plugins)) {
+            const addedAt = PluginMeta[p.name]?.addedAt ?? 0;
+            if (addedAt > 0 && (now - addedAt) <= NEW_RELEASE_WINDOW_SECONDS) {
+                set.add(p.name);
+            }
+        }
+        return set;
+    }, [pluginCount, discoveredNewPlugins, userPluginRevision]);
+
+    const pinnedSignature = Object.values(Plugins)
+        .filter(p => settings.plugins[p.name]?.isPinned)
+        .map(p => p.name)
+        .sort()
+        .join(",");
+
     const sortedPlugins = useMemo(() =>
         Object.values(Plugins).sort((a, b) => {
-            const isUserA = Boolean(PluginMeta[a.name]?.userPlugin);
-            const isUserB = Boolean(PluginMeta[b.name]?.userPlugin);
-            const isEnabledA = isPluginEnabled(a.name);
-            const isEnabledB = isPluginEnabled(b.name);
+            const isPinnedA = Boolean(settings.plugins[a.name]?.isPinned);
+            const isPinnedB = Boolean(settings.plugins[b.name]?.isPinned);
 
-            // Group 0: custom added plugins first
-            // Group 1: enabled stock vencord plugins second
-            // Group 2: remaining disabled stock plugins third
-            const rankA = isUserA ? 0 : (isEnabledA ? 1 : 2);
-            const rankB = isUserB ? 0 : (isEnabledB ? 1 : 2);
+            // Group 0: Pinned plugins stay fixed at the top even when turned off
+            if (isPinnedA !== isPinnedB) return isPinnedA ? -1 : 1;
 
-            if (rankA !== rankB) return rankA - rankB;
+            const addedA = PluginMeta[a.name]?.addedAt ?? 0;
+            const addedB = PluginMeta[b.name]?.addedAt ?? 0;
 
-            if (isUserA && isUserB && isEnabledA !== isEnabledB) {
-                return isEnabledA ? -1 : 1;
+            if (isPinnedA && isPinnedB) {
+                // Intentionally ignore enabled state so disabling a pinned plugin preserves its exact position
+                if (addedA !== addedB) return addedB - addedA;
+                return a.name.localeCompare(b.name);
             }
 
-            const favA = Number(settings.plugins[a.name]?.isFavorite ?? false);
-            const favB = Number(settings.plugins[b.name]?.isFavorite ?? false);
-            if (favA !== favB) return favB - favA;
+            const isEnabledA = isPluginEnabled(a.name);
+            const isEnabledB = isPluginEnabled(b.name);
+            const isNewA = newPluginSet.has(a.name);
+            const isNewB = newPluginSet.has(b.name);
+
+            // Group 1: Enabled plugins
+            // Group 2: New plugins (always at top right after pinned & enabled)
+            // Group 3: Remaining disabled plugins
+            const rankA = isEnabledA ? 1 : (isNewA ? 2 : 3);
+            const rankB = isEnabledB ? 1 : (isNewB ? 2 : 3);
+            if (rankA !== rankB) return rankA - rankB;
+
+            // Keep enabled new plugins at the top of enabled plugins
+            if (rankA === 1 && isNewA !== isNewB) {
+                return isNewA ? -1 : 1;
+            }
+
+            // Sort newest to oldest within every group
+            if (addedA !== addedB) return addedB - addedA;
 
             return a.name.localeCompare(b.name);
         }),
-        [pluginCount, settings.plugins]
+        [pluginCount, userPluginRevision, newPluginSet, pinnedSignature]
     );
 
     const hasUserPlugins = Object.values(PluginMeta).some(m => m.userPlugin);
@@ -223,7 +279,19 @@ function PluginSettings() {
             if (isUserHidden) return false;
         }
 
+        const meta = PluginMeta[plugin.name];
+        const source = meta?.source ?? (meta?.userPlugin ? "imcord" : "vencord");
+
         switch (status) {
+            case SearchStatus.PINNED:
+                if (!settings.plugins[plugin.name]?.isPinned) return false;
+                break;
+            case SearchStatus.IMCORD:
+                if (source !== "imcord") return false;
+                break;
+            case SearchStatus.VENCORD:
+                if (source !== "vencord") return false;
+                break;
             case SearchStatus.FAVORITES:
                 if (!settings.plugins[plugin.name]?.isFavorite) return false;
                 break;
@@ -234,10 +302,10 @@ function PluginSettings() {
                 if (!isPluginEnabled(plugin.name)) return false;
                 break;
             case SearchStatus.NEW:
-                if (!newPlugins?.includes(plugin.name) && !PluginMeta[plugin.name]?.userPlugin) return false;
+                if (!newPluginSet.has(plugin.name)) return false;
                 break;
             case SearchStatus.USER_PLUGINS:
-                if (!PluginMeta[plugin.name]?.userPlugin) return false;
+                if (!meta?.userPlugin) return false;
                 break;
             case SearchStatus.API_PLUGINS:
                 if (!plugin.name.endsWith("API")) return false;
@@ -258,23 +326,6 @@ function PluginSettings() {
             plugin.searchTerms?.some(t => t.toLowerCase().includes(search))
         );
     };
-
-    const [newPlugins] = useAwaiter(() => DataStore.get("Vencord_existingPlugins").then((cachedPlugins: Record<string, number> | undefined) => {
-        const now = Date.now() / 1000;
-        const existingTimestamps: Record<string, number> = {};
-        const sortedPluginNames = Object.values(sortedPlugins).map(plugin => plugin.name);
-
-        const newPlugins: string[] = [];
-        for (const { name: p } of sortedPlugins) {
-            const time = existingTimestamps[p] = cachedPlugins?.[p] ?? now;
-            if ((time + 60 * 60 * 24 * 2) > now) {
-                newPlugins.push(p);
-            }
-        }
-        DataStore.set("Vencord_existingPlugins", existingTimestamps);
-
-        return lodash.isEqual(newPlugins, sortedPluginNames) ? [] : newPlugins;
-    }), { deps: [pluginCount], fallbackValue: [] });
 
     const plugins = [] as JSX.Element[];
     const requiredPlugins = [] as JSX.Element[];
@@ -313,7 +364,7 @@ function PluginSettings() {
                     onRestartNeeded={(name, key) => changes.handleChange(`${name}.${key}`)}
                     disabled={false}
                     plugin={p}
-                    isNew={newPlugins?.includes(p.name) || PluginMeta[p.name]?.userPlugin}
+                    isNew={newPluginSet.has(p.name)}
                     key={p.name}
                 />
             );
@@ -402,6 +453,9 @@ function PluginSettings() {
                     <Select
                         options={[
                             { label: "Show All", value: SearchStatus.ALL, default: true },
+                            { label: "Show Pinned", value: SearchStatus.PINNED },
+                            { label: "Show iMCord Plugins", value: SearchStatus.IMCORD },
+                            { label: "Show Vencord Plugins", value: SearchStatus.VENCORD },
                             { label: "Show Favorites", value: SearchStatus.FAVORITES },
                             { label: "Show Enabled", value: SearchStatus.ENABLED },
                             { label: "Show Disabled", value: SearchStatus.DISABLED },

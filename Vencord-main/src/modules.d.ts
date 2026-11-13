@@ -20,11 +20,20 @@ declare module "~plugins" {
     import { PluginTarget } from "@utils/pluginTargets";
     const plugins: Record<string, import("./utils/types").Plugin>;
 
+    export type PluginSource = "imcord" | "vencord";
+    export interface PluginMetadataEntry {
+        source: PluginSource;
+        addedAt: number;
+    }
+
     export default plugins;
     export const PluginMeta: Record<string, {
         folderName: string;
         userPlugin: boolean;
+        source?: PluginSource;
+        addedAt?: number;
     }>;
+    export const PluginSourceMeta: Record<string, PluginMetadataEntry>;
     export const ExcludedPlugins: Record<string, PluginTarget>;
 }
 
