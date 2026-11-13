@@ -152,7 +152,7 @@ function PluginSettings() {
                 >
                     <>
                         <p>The following plugins require a restart:</p>
-                        <div>{changes.map((s, i) => (
+                        <div>{Array.from(changes).map((s, i) => (
                             <React.Fragment key={s}>
                                 {i > 0 && ", "}
                                 {Parser.parse("`" + s.split(".")[0] + "`")}

@@ -10,7 +10,7 @@ export * from "./Text";
 // #region Old compability
 
 /** @deprecated use `Text` from `@components/Text` instead */
-export const BaseText = Text as never;
+export const BaseText = Text;
 export type BaseTextProps<Tag extends TextTag = "div"> = TextProps<Tag>;
 
 export const TextCompat: any = function TextCompat({ color, variant, ...restProps }: any) {

@@ -9,6 +9,12 @@ on:
   schedule:
     - cron: '0 */6 * * *'
   workflow_dispatch:
+    inputs:
+      sync_upstream:
+        description: 'Sync upstream Vencord plugins and fixes before building'
+        required: false
+        default: true
+        type: boolean
 
 permissions:
   contents: write
@@ -27,29 +33,63 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Sync Upstream Vencord Plugins & Fixes
+        id: sync
+        if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.sync_upstream != false)
+        run: node scripts/sync_upstream.mjs --fetch
+
+      - name: Determine Whether Release Is Needed
+        id: gate
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" != "schedule" ]]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ -n "$(git status --porcelain Vencord-main)" ]]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || true)
+          if [[ -z "$LAST_TAG" ]] || [[ -n "$(git diff --name-only "$LAST_TAG" HEAD -- Vencord-main userplugins installer_src scripts)" ]]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "No upstream Vencord or local source changes since $LAST_TAG; skipping release."
+          echo "run=false" >> "$GITHUB_OUTPUT"
+
       - name: Setup Node.js
+        if: steps.gate.outputs.run == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 24
 
       - name: Setup pnpm
+        if: steps.gate.outputs.run == 'true'
         uses: pnpm/action-setup@v4
         with:
-          version: 10.4.1
+          version: 12.15.0
 
       - name: Install Vencord Dependencies
+        if: steps.gate.outputs.run == 'true'
         working-directory: Vencord-main
         run: pnpm --config.manage-package-manager-versions=false install --no-frozen-lockfile --ignore-scripts
 
       - name: Build Standalone Vencord
+        if: steps.gate.outputs.run == 'true'
         working-directory: Vencord-main
         run: node scripts/build/build.mjs --standalone
 
       - name: Compile Standalone Installers (CLI & GUI)
+        if: steps.gate.outputs.run == 'true'
         shell: cmd
         run: call installer_src\build_installers.bat
 
       - name: Set Release Tag
+        if: steps.gate.outputs.run == 'true'
         id: vars
         shell: bash
         run: |
@@ -63,21 +103,34 @@ jobs:
           fi
 
       - name: Generate Release Manifest
+        if: steps.gate.outputs.run == 'true'
         run: node scripts/generate_manifest.mjs
 
-      - name: Commit Updated Manifest
+      - name: Commit Synced Changes & Manifest
+        if: steps.gate.outputs.run == 'true' && github.ref_type != 'tag'
         shell: bash
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          git add userplugins/manifest.json
-          git diff --staged --quiet || (git commit -m "chore: update release manifest [skip ci]" && git push)
+          git add Vencord-main userplugins/manifest.json
+          if ! git diff --staged --quiet; then
+            if git diff --staged --quiet -- Vencord-main; then
+              MSG="chore: update release manifest [skip ci]"
+            else
+              MSG="chore: sync upstream Vencord (${{ steps.sync.outputs.upstream_sha }}) & update release manifest [skip ci]"
+            fi
+            git commit -m "$MSG"
+            git pull --rebase origin main || true
+            git push
+          fi
 
       - name: Publish GitHub Release
+        if: steps.gate.outputs.run == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.TAG_NAME }}
           name: ${{ env.RELEASE_NAME }}
+          body: ${{ steps.sync.outputs.changed == 'true' && format('Synced upstream Vencord `{0}`: {1}', steps.sync.outputs.upstream_sha, steps.sync.outputs.upstream_msg) || '' }}
           draft: false
           prerelease: false
           make_latest: true

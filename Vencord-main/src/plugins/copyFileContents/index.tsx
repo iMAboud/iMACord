@@ -24,7 +24,6 @@ export default definePlugin({
     description: "Adds a button to text file attachments to copy their contents",
     tags: ["Utility"],
     authors: [Devs.Obsidian, Devs.Nuckyz],
-    enabledByDefault: true,
     patches: [
         {
             find: "#{intl::PREVIEW_BYTES_LEFT}",
