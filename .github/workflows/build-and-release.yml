@@ -9,12 +9,6 @@ on:
   schedule:
     - cron: '0 */6 * * *'
   workflow_dispatch:
-    inputs:
-      sync_upstream:
-        description: 'Sync upstream Vencord plugins and fixes before building'
-        required: false
-        default: true
-        type: boolean
 
 permissions:
   contents: write
@@ -35,7 +29,7 @@ jobs:
 
       - name: Sync Upstream Vencord Plugins & Fixes
         id: sync
-        if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.sync_upstream != false)
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         run: node scripts/sync_upstream.mjs --fetch
 
       - name: Determine Whether Release Is Needed
@@ -130,7 +124,6 @@ jobs:
         with:
           tag_name: ${{ env.TAG_NAME }}
           name: ${{ env.RELEASE_NAME }}
-          body: ${{ steps.sync.outputs.changed == 'true' && format('Synced upstream Vencord `{0}`: {1}', steps.sync.outputs.upstream_sha, steps.sync.outputs.upstream_msg) || '' }}
           draft: false
           prerelease: false
           make_latest: true
