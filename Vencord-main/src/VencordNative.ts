@@ -60,7 +60,7 @@ export default {
     },
 
     userPlugins: {
-        getList: () => invoke<Array<{ name: string; code: string; filename: string }>>(IpcEvents.GET_USER_PLUGINS_LIST),
+        getList: () => invoke<Array<{ name: string; code: string; filename: string; addedAt?: number }>>(IpcEvents.GET_USER_PLUGINS_LIST),
         save: (name: string, code: string) => invoke<{ name: string; filename: string; code: string }>(IpcEvents.SAVE_USER_PLUGIN, name, code),
         delete: (filename: string) => invoke<boolean>(IpcEvents.DELETE_USER_PLUGIN, filename),
         openFolder: () => invoke<void>(IpcEvents.OPEN_USER_PLUGINS_FOLDER),

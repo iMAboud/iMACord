@@ -16,11 +16,21 @@
     opacity: 0.6;
 }
 
+.vc-addon-card-pinned {
+    background: linear-gradient(180deg, rgb(25 22 44 / 95%) 0%, #0e1019 100%);
+    border-color: rgb(139 92 246 / 38%);
+    box-shadow:
+        0 4px 18px rgb(0 0 0 / 40%),
+        0 0 12px rgb(139 92 246 / 14%);
+}
+
 .vc-addon-card:hover {
     background: #131522;
     transform: translateY(-2px);
     border-color: rgb(139 92 246 / 40%);
-    box-shadow: 0 8px 24px rgb(0 0 0 / 45%), 0 0 16px rgb(139 92 246 / 20%);
+    box-shadow:
+        0 8px 24px rgb(0 0 0 / 45%),
+        0 0 16px rgb(139 92 246 / 20%);
 }
 
 .vc-addon-header {
@@ -84,10 +94,44 @@
 }
 
 .vc-addon-title-container {
-    width: 100%;
+    flex: 1;
+    min-width: 0;
     overflow: hidden;
     height: 1.25em;
     position: relative;
+}
+
+.vc-addon-source-flag {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 7px;
+    flex-shrink: 0;
+    box-sizing: border-box;
+    transition:
+        transform 0.15s ease,
+        border-color 0.15s ease;
+}
+
+.vc-addon-source-imcord {
+    background: rgb(139 92 246 / 18%);
+    border: 1px solid rgb(139 92 246 / 42%);
+    box-shadow: 0 0 10px rgb(139 92 246 / 20%);
+}
+
+.vc-addon-source-vencord {
+    background: rgb(255 182 193 / 12%);
+    border: 1px solid rgb(255 255 255 / 16%);
+}
+
+.vc-addon-source-img {
+    width: 16px;
+    height: 16px;
+    object-fit: contain;
+    display: block;
+    user-select: none;
 }
 
 .vc-addon-title {

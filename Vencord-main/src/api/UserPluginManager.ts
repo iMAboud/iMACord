@@ -25,7 +25,7 @@ import * as Webpack from "@webpack";
 import * as Common from "@webpack/common";
 import { React } from "@webpack/common";
 
-import Plugins, { PluginMeta } from "~plugins";
+import Plugins, { PluginMeta, PluginSourceMeta } from "~plugins";
 
 const logger = new Logger("UserPluginManager", "#3b82f6");
 
@@ -172,12 +172,20 @@ export function evalUserPlugin(code: string, fileName?: string): Plugin | null {
     }
 }
 
-export function registerUserPlugin(plugin: Plugin, fileName: string, isNewPlugin: boolean = false) {
-    const existingBuiltin = Boolean(Plugins[plugin.name] && !PluginMeta[plugin.name]?.userPlugin);
+export function registerUserPlugin(plugin: Plugin, fileName: string, isNewPlugin: boolean = false, fileAddedAt?: number) {
+    const prevMeta = PluginMeta[plugin.name];
+    const existingBuiltin = Boolean(Plugins[plugin.name] && !prevMeta?.userPlugin);
+    const knownMeta = PluginSourceMeta?.[plugin.name.toLowerCase()]
+        ?? PluginSourceMeta?.[fileName.replace(/\.js$/i, "").toLowerCase()];
+    const resolvedAddedAt = isNewPlugin
+        ? Math.floor(Date.now() / 1000)
+        : (knownMeta?.addedAt || prevMeta?.addedAt || fileAddedAt || 0);
 
     PluginMeta[plugin.name] = {
         folderName: fileName,
-        userPlugin: true
+        userPlugin: true,
+        source: knownMeta?.source ?? "imcord",
+        addedAt: resolvedAddedAt
     };
     Plugins[plugin.name] = plugin;
 
@@ -334,7 +342,7 @@ export async function loadAllUserPlugins() {
             }
         }
 
-        for (const { name, code, filename } of userPlugins) {
+        for (const { name, code, filename, addedAt } of userPlugins) {
             const lowerFile = filename.toLowerCase();
             const lowerName = name.toLowerCase();
             if (legacyNames.includes(lowerFile) || legacyNames.includes(`${lowerName}.js`)) {
@@ -344,7 +352,7 @@ export async function loadAllUserPlugins() {
             const plugin = evalUserPlugin(code, filename);
             if (plugin) {
                 userPluginCodeMap.set(plugin.name, code);
-                registerUserPlugin(plugin, filename, false);
+                registerUserPlugin(plugin, filename, false, addedAt);
             }
         }
     } catch (e) {

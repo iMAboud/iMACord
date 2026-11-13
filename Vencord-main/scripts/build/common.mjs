@@ -169,6 +169,11 @@ export const globPlugins = kind => ({
 
         build.onLoad({ filter, namespace: "import-plugins" }, async () => {
             const pluginDirs = ["plugins/_api", "plugins/_core", "plugins", "userplugins"];
+            const metadataPath = resolve(import.meta.dirname, "../pluginMetadata.json");
+            let metadata = { folders: {}, userPlugins: {} };
+            try {
+                metadata = JSON.parse(await readFile(metadataPath, "utf-8"));
+            } catch { }
             let code = "";
             let pluginsCode = "\n";
             let metaCode = "\n";
@@ -207,19 +212,27 @@ export const globPlugins = kind => ({
 
                     const folderName = `src/${dir}/${fileName}`.replace(/^src\/plugins\//, "");
                     const isCustomUserPlugin = userPlugin || cleanBaseName === "imamenu";
+                    const folderKey = fileName.toLowerCase();
+                    const isInternalVencordDir = dir === "plugins/_api" || dir === "plugins/_core";
+                    const entry = isInternalVencordDir
+                        ? { source: "vencord", addedAt: 0 }
+                        : (userPlugin
+                            ? (metadata.userPlugins?.[cleanBaseName] ?? { source: "imcord", addedAt: 0 })
+                            : (metadata.folders?.[folderKey] ?? { source: "imcord", addedAt: 0 }));
 
                     const mod = `p${i}`;
                     code += `import ${mod} from "./${dir}/${fileName.replace(/\.(tsx?|jsx?)$/, "")}";\n`;
                     pluginsCode += `[${mod}.name]:${mod},\n`;
-                    metaCode += `[${mod}.name]:${JSON.stringify({ folderName, userPlugin: isCustomUserPlugin })},\n`;
+                    metaCode += `[${mod}.name]:${JSON.stringify({ folderName, userPlugin: isCustomUserPlugin, source: entry.source, addedAt: entry.addedAt })},\n`;
                     i++;
                 }
             }
-            code += `export default {${pluginsCode}};export const PluginMeta={${metaCode}};export const ExcludedPlugins={${excludedCode}};`;
+            code += `export default {${pluginsCode}};export const PluginMeta={${metaCode}};export const PluginSourceMeta=${JSON.stringify(metadata.userPlugins ?? {})};export const ExcludedPlugins={${excludedCode}};`;
             return {
                 contents: code,
                 resolveDir: "./src",
                 watchDirs: pluginDirs.map(d => resolve("src", d)),
+                watchFiles: [metadataPath],
             };
         });
     }

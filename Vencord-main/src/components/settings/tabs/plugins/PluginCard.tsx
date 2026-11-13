@@ -8,8 +8,9 @@ import { showNotice } from "@api/Notices";
 import { hasAnyVisibleSettings, isPluginEnabled, pluginRequiresRestart, startDependenciesRecursive, startPlugin, stopPlugin } from "@api/PluginManager";
 import { Settings } from "@api/Settings";
 import { deleteUserPlugin, getUserPluginCode } from "@api/UserPluginManager";
-import { CogWheel, InfoIcon } from "@components/Icons";
+import { CogWheel, InfoIcon, PinIcon } from "@components/Icons";
 import { AddonCard } from "@components/settings/AddonCard";
+import { PluginSourceBadge } from "@components/settings/PluginSourceBadge";
 import { classes } from "@utils/misc";
 import { Plugin } from "@utils/types";
 import { openModal, React, showToast, Toasts, Tooltip } from "@webpack/common";
@@ -83,7 +84,26 @@ export function PluginCard({ plugin, disabled, onRestartNeeded, onMouseEnter, on
     }
 
     const isUserHidden = Boolean(settings?.isUserHidden);
-    const isUserPlugin = Boolean(PluginMeta[plugin.name]?.userPlugin);
+    const isPinned = Boolean(settings?.isPinned);
+    const pluginMeta = PluginMeta[plugin.name];
+    const isUserPlugin = Boolean(pluginMeta?.userPlugin);
+    const source = pluginMeta?.source ?? (isUserPlugin ? "imcord" : "vencord");
+
+    function togglePin(e: React.MouseEvent) {
+        e.stopPropagation();
+        const nextPinned = !isPinned;
+        if (!settings) {
+            Settings.plugins[plugin.name] = {
+                enabled: isEnabled(),
+                isPinned: nextPinned,
+                pinnedAt: nextPinned ? Math.floor(Date.now() / 1000) : undefined
+            };
+        } else {
+            settings.isPinned = nextPinned;
+            settings.pinnedAt = nextPinned ? Math.floor(Date.now() / 1000) : undefined;
+        }
+        showToast(nextPinned ? `Pinned "${plugin.name}" to top` : `Unpinned "${plugin.name}"`, Toasts.Type.SUCCESS);
+    }
 
     function toggleHide(e: React.MouseEvent) {
         e.stopPropagation();
@@ -112,6 +132,8 @@ export function PluginCard({ plugin, disabled, onRestartNeeded, onMouseEnter, on
             name={plugin.name}
             description={plugin.description}
             isNew={isNew}
+            isPinned={isPinned}
+            sourceBadge={<PluginSourceBadge source={source} />}
             enabled={isEnabled()}
             setEnabled={toggleEnabled}
             disabled={disabled}
@@ -119,6 +141,23 @@ export function PluginCard({ plugin, disabled, onRestartNeeded, onMouseEnter, on
             onMouseLeave={onMouseLeave}
             infoButton={
                 <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                    {!disabled && (
+                        <Tooltip text={isPinned ? "Unpin Plugin" : "Pin Plugin (keeps position even when disabled)"}>
+                            {tooltipProps => (
+                                <button
+                                    {...tooltipProps}
+                                    role="switch"
+                                    aria-checked={isPinned}
+                                    onClick={togglePin}
+                                    className={cl("info-button")}
+                                    style={{ color: isPinned ? "#a78bfa" : undefined }}
+                                >
+                                    <PinIcon className={classes(cl("info-icon"), "vc-icon")} width={18} height={18} filled={isPinned} />
+                                </button>
+                            )}
+                        </Tooltip>
+                    )}
+
                     {isUserPlugin && (
                         <>
                             <Tooltip text="Edit Plugin Script (.js)">

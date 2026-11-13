@@ -70,6 +70,8 @@ export interface Settings {
         [plugin: string]: {
             enabled: boolean;
             isFavorite?: boolean;
+            isPinned?: boolean;
+            pinnedAt?: number;
             isUserHidden?: boolean;
             [setting: string]: any;
         };

@@ -21,8 +21,10 @@ import "./PluginModal.css";
 import { generateId } from "@api/Commands";
 import { hasAnyVisibleSettings, isSettingHidden } from "@api/PluginManager";
 import { useSettings } from "@api/Settings";
+import { getUserPluginCode } from "@api/UserPluginManager";
 import { BaseText } from "@components/BaseText";
 import ErrorBoundary from "@components/ErrorBoundary";
+import { PluginSourceBadge } from "@components/settings/PluginSourceBadge";
 import { debounce } from "@shared/debounce";
 import { gitRemote } from "@shared/vencordUserAgent";
 import { classNameFactory } from "@utils/css";
@@ -32,7 +34,6 @@ import { classes } from "@utils/misc";
 import { OptionType, Plugin, PluginTag } from "@utils/types";
 import { RenderModalProps, User } from "@vencord/discord-types";
 import { findCssClassesLazy } from "@webpack";
-import { getUserPluginCode } from "@api/UserPluginManager";
 import { Button, Clickable, FluxDispatcher, Forms, Modal, openModal, React, Text, Tooltip, useEffect, useMemo, UserStore, UserSummaryItem, UserUtils, useState } from "@webpack/common";
 import { Constructor } from "type-fest";
 
@@ -176,6 +177,7 @@ export default function PluginModal({ plugin, onRestartNeeded, onClose, transiti
     }
 
     const pluginMeta = PluginMeta[plugin.name];
+    const source = pluginMeta?.source ?? (pluginMeta?.userPlugin ? "imcord" : "vencord");
 
     return (
         <Modal
@@ -185,6 +187,7 @@ export default function PluginModal({ plugin, onRestartNeeded, onClose, transiti
             title={
                 <div className={cl("header")}>
                     <BaseText tag="h1" weight="semibold" size="lg">{plugin.name}</BaseText>
+                    <PluginSourceBadge source={source} />
                     {!pluginMeta.userPlugin ? (
                         <div className="vc-settings-modal-links">
                             <FavoriteButton

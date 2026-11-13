@@ -17,6 +17,7 @@ const PROTECTED_FILES = new Set([
     "iMCord.ico",
     "scripts/build/build.mjs",
     "scripts/build/common.mjs",
+    "scripts/pluginMetadata.json",
     "src/Vencord.ts",
     "src/VencordNative.ts",
     "src/api/Settings.ts",
@@ -26,11 +27,14 @@ const PROTECTED_FILES = new Set([
     "src/components/Button.tsx",
     "src/components/FormSwitch.tsx",
     "src/components/Heading.tsx",
+    "src/components/Icons.tsx",
     "src/components/settings/AddonCard.css",
     "src/components/settings/AddonCard.tsx",
+    "src/components/settings/PluginSourceBadge.tsx",
     "src/components/settings/tabs/plugins/ContributorModal.tsx",
     "src/components/settings/tabs/plugins/CustomPluginModal.tsx",
     "src/components/settings/tabs/plugins/PluginCard.tsx",
+    "src/components/settings/tabs/plugins/PluginModal.css",
     "src/components/settings/tabs/plugins/PluginModal.tsx",
     "src/components/settings/tabs/plugins/index.tsx",
     "src/components/settings/tabs/plugins/styles.css",
@@ -45,6 +49,7 @@ const PROTECTED_FILES = new Set([
     "src/main/settings.ts",
     "src/main/updater/http.ts",
     "src/main/utils/constants.ts",
+    "src/modules.d.ts",
     "src/plugins/_core/settings.tsx",
     "src/plugins/amongick/index.ts",
     "src/plugins/betterSettings/index.tsx",
@@ -125,6 +130,9 @@ function writeGithubOutput(values) {
 
 function syncFromDir(upstreamDir, { dryRun = false } = {}) {
     const upFiles = walk(upstreamDir);
+    if (Object.keys(upFiles).length === 0) {
+        throw new Error(`Upstream directory has no files to sync: ${upstreamDir}`);
+    }
     const localFiles = walk(vencordDir);
     let overlaid = 0;
 
@@ -160,6 +168,107 @@ function syncFromDir(upstreamDir, { dryRun = false } = {}) {
     return { updated, removed, overlaid };
 }
 
+function updatePluginMetadata(upstreamDir, upstreamTs, { dryRun = false } = {}) {
+    const metadataPath = path.join(vencordDir, "scripts", "pluginMetadata.json");
+    let metadata = { folders: {}, userPlugins: {} };
+    try {
+        metadata = JSON.parse(fs.readFileSync(metadataPath, "utf8"));
+    } catch { }
+    metadata.folders ??= {};
+    metadata.userPlugins ??= {};
+
+    const sortEntries = obj => Object.fromEntries(
+        Object.entries(obj).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    );
+    const originalNormalized = JSON.stringify({
+        folders: sortEntries(metadata.folders),
+        userPlugins: sortEntries(metadata.userPlugins)
+    });
+
+    const nowTs = Math.floor(Date.now() / 1000);
+    const upPluginsDir = path.join(upstreamDir, "src", "plugins");
+    const upFolderSet = new Set();
+
+    if (fs.existsSync(upPluginsDir)) {
+        for (const entry of fs.readdirSync(upPluginsDir, { withFileTypes: true })) {
+            if (entry.name.startsWith("_") || entry.name === "index.ts") continue;
+            const key = entry.name.toLowerCase();
+            upFolderSet.add(key);
+            const cur = metadata.folders[key];
+            if (!cur || !cur.addedAt) {
+                metadata.folders[key] = {
+                    source: "vencord",
+                    addedAt: upstreamTs || nowTs
+                };
+            } else if (cur.source !== "vencord") {
+                metadata.folders[key] = { ...cur, source: "vencord" };
+            }
+        }
+    }
+
+    const localPluginsDir = path.join(vencordDir, "src", "plugins");
+    const localFolderKeys = new Set();
+    if (fs.existsSync(localPluginsDir)) {
+        for (const entry of fs.readdirSync(localPluginsDir, { withFileTypes: true })) {
+            if (entry.name.startsWith("_") || entry.name === "index.ts") continue;
+            const key = entry.name.toLowerCase();
+            localFolderKeys.add(key);
+            if (!upFolderSet.has(key) && !metadata.folders[key]) {
+                metadata.folders[key] = { source: "imcord", addedAt: nowTs };
+            }
+        }
+    }
+
+    // Remove obsolete upstream folders that no longer exist locally
+    for (const [key, val] of Object.entries(metadata.folders)) {
+        if (val?.source === "vencord" && !upFolderSet.has(key) && !localFolderKeys.has(key)) {
+            delete metadata.folders[key];
+        }
+    }
+
+    const userPluginsDir = path.join(rootDir, "userplugins");
+    if (fs.existsSync(userPluginsDir)) {
+        for (const file of fs.readdirSync(userPluginsDir)) {
+            if (!file.endsWith(".js")) continue;
+            const baseKey = file.replace(/\.js$/i, "").toLowerCase();
+            if (!metadata.userPlugins[baseKey]) {
+                metadata.userPlugins[baseKey] = { source: "imcord", addedAt: nowTs };
+            }
+            try {
+                const code = fs.readFileSync(path.join(userPluginsDir, file), "utf8");
+                const m = code.match(/name:\s*["'`]([^"'`]+)["'`]/);
+                if (m) {
+                    const nameKey = m[1].toLowerCase();
+                    if (!metadata.userPlugins[nameKey]) {
+                        metadata.userPlugins[nameKey] = {
+                            source: "imcord",
+                            addedAt: metadata.userPlugins[baseKey].addedAt
+                        };
+                    }
+                }
+            } catch { }
+        }
+    }
+
+    const nextMetadata = {
+        folders: sortEntries(metadata.folders),
+        userPlugins: sortEntries(metadata.userPlugins)
+    };
+    const nextText = JSON.stringify(nextMetadata, null, 2) + "\n";
+    let prevText = "";
+    try {
+        prevText = fs.readFileSync(metadataPath, "utf8").replace(/\r\n/g, "\n");
+    } catch { }
+    if (originalNormalized !== JSON.stringify(nextMetadata) || prevText !== nextText) {
+        if (!dryRun) {
+            fs.mkdirSync(path.dirname(metadataPath), { recursive: true });
+            fs.writeFileSync(metadataPath, nextText, "utf8");
+        }
+        return originalNormalized !== JSON.stringify(nextMetadata);
+    }
+    return false;
+}
+
 function main() {
     const args = process.argv.slice(2);
     const shouldFetch = args.includes("--fetch");
@@ -170,6 +279,7 @@ function main() {
     let tempCloneDir = null;
     let upstreamSha = "";
     let upstreamMsg = "";
+    let upstreamTs = 0;
 
     try {
         if (shouldFetch) {
@@ -191,14 +301,16 @@ function main() {
             if (fs.existsSync(path.join(upstreamDir, ".git"))) {
                 upstreamSha = execFileSync("git", ["-C", upstreamDir, "rev-parse", "--short", "HEAD"], { encoding: "utf8" }).trim();
                 upstreamMsg = execFileSync("git", ["-C", upstreamDir, "log", "-1", "--pretty=%s"], { encoding: "utf8" }).trim();
+                upstreamTs = Number(execFileSync("git", ["-C", upstreamDir, "log", "-1", "--pretty=%at"], { encoding: "utf8" }).trim()) || 0;
             }
         } catch {}
 
         const { updated, removed, overlaid } = syncFromDir(upstreamDir, { dryRun });
-        const changed = updated > 0 || removed > 0;
+        const metaChanged = updatePluginMetadata(upstreamDir, upstreamTs, { dryRun });
+        const changed = updated > 0 || removed > 0 || metaChanged;
         const shaSuffix = upstreamSha ? ` (${upstreamSha}: ${upstreamMsg})` : "";
         console.log(
-            `[iMCord AutoSync]${dryRun ? " [DRY-RUN]" : ""} Synced ${updated} upstream Vencord files, removed ${removed} obsolete files, applied ${overlaid} overlay(s)${shaSuffix}.`
+            `[iMCord AutoSync]${dryRun ? " [DRY-RUN]" : ""} Synced ${updated} upstream Vencord files, removed ${removed} obsolete files, applied ${overlaid} overlay(s)${metaChanged ? ", updated plugin metadata" : ""}${shaSuffix}.`
         );
 
         writeGithubOutput({
