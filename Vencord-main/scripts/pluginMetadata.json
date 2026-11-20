@@ -685,6 +685,800 @@
       "addedAt": 1722516558
     }
   },
+  "equicordFolders": {
+    "advancedpermissions": {
+      "source": "equicord",
+      "addedAt": 1783630984
+    },
+    "altkrispswitch": {
+      "source": "equicord",
+      "addedAt": 1713378587
+    },
+    "alwaysexpandprofiles": {
+      "source": "equicord",
+      "addedAt": 1754863723
+    },
+    "animalese": {
+      "source": "equicord",
+      "addedAt": 1755952918
+    },
+    "atsomeone": {
+      "source": "equicord",
+      "addedAt": 1722378103
+    },
+    "autojumptomessage": {
+      "source": "equicord",
+      "addedAt": 1785983767
+    },
+    "autozipper": {
+      "source": "equicord",
+      "addedAt": 1761185611
+    },
+    "bannerseverywhere": {
+      "source": "equicord",
+      "addedAt": 1727454192
+    },
+    "basedecoder": {
+      "source": "equicord",
+      "addedAt": 1721286421
+    },
+    "betteractivities": {
+      "source": "equicord",
+      "addedAt": 1717448712
+    },
+    "betteraudioplayer.desktop": {
+      "source": "equicord",
+      "addedAt": 1793153800
+    },
+    "betterbackreading": {
+      "source": "equicord",
+      "addedAt": 1792859455
+    },
+    "betterbanreasons": {
+      "source": "equicord",
+      "addedAt": 1721278435
+    },
+    "betterblockedusers": {
+      "source": "equicord",
+      "addedAt": 1741549064
+    },
+    "bettercommands": {
+      "source": "equicord",
+      "addedAt": 1754264234
+    },
+    "betterforwards": {
+      "source": "equicord",
+      "addedAt": 1781569651
+    },
+    "betterimageeditor": {
+      "source": "equicord",
+      "addedAt": 1789322336
+    },
+    "betterinvites": {
+      "source": "equicord",
+      "addedAt": 1728967955
+    },
+    "bettermutualservers": {
+      "source": "equicord",
+      "addedAt": 1793799779
+    },
+    "betterplusreacts": {
+      "source": "equicord",
+      "addedAt": 1733946659
+    },
+    "betterpolldetails": {
+      "source": "equicord",
+      "addedAt": 1794620227
+    },
+    "blockkeywords": {
+      "source": "equicord",
+      "addedAt": 1721333994
+    },
+    "blockkrisp": {
+      "source": "equicord",
+      "addedAt": 1717266742
+    },
+    "bypasspinprompt": {
+      "source": "equicord",
+      "addedAt": 1746760778
+    },
+    "bypassstatus": {
+      "source": "equicord",
+      "addedAt": 1723954836
+    },
+    "channelbadges": {
+      "source": "equicord",
+      "addedAt": 1728949012
+    },
+    "channeltabs": {
+      "source": "equicord",
+      "addedAt": 1722138707
+    },
+    "cleanchannelname": {
+      "source": "equicord",
+      "addedAt": 1713378587
+    },
+    "cleanerchannelgroups": {
+      "source": "equicord",
+      "addedAt": 1770225108
+    },
+    "clickableroles": {
+      "source": "equicord",
+      "addedAt": 1772555105
+    },
+    "clientsideblock": {
+      "source": "equicord",
+      "addedAt": 1721339330
+    },
+    "clipsenhancements.discorddesktop": {
+      "source": "equicord",
+      "addedAt": 1744200932
+    },
+    "clipupload.desktop": {
+      "source": "equicord",
+      "addedAt": 1780502319
+    },
+    "collapsibleui": {
+      "source": "equicord",
+      "addedAt": 1776173603
+    },
+    "commandpalette": {
+      "source": "equicord",
+      "addedAt": 1721278435
+    },
+    "contentwarning": {
+      "source": "equicord",
+      "addedAt": 1754335071
+    },
+    "copyprofilecolors": {
+      "source": "equicord",
+      "addedAt": 1744328462
+    },
+    "copystatusurls": {
+      "source": "equicord",
+      "addedAt": 1754434093
+    },
+    "copyusermention": {
+      "source": "equicord",
+      "addedAt": 1713378587
+    },
+    "cursorbuddy": {
+      "source": "equicord",
+      "addedAt": 1767237617
+    },
+    "customfoldericons": {
+      "source": "equicord",
+      "addedAt": 1748621554
+    },
+    "customsounds": {
+      "source": "equicord",
+      "addedAt": 1721286421
+    },
+    "customstatustimeouts": {
+      "source": "equicord",
+      "addedAt": 1775968247
+    },
+    "customtimestamps": {
+      "source": "equicord",
+      "addedAt": 1730011691
+    },
+    "customusercolors": {
+      "source": "equicord",
+      "addedAt": 1739518058
+    },
+    "declutter": {
+      "source": "equicord",
+      "addedAt": 1772417175
+    },
+    "disablecameras": {
+      "source": "equicord",
+      "addedAt": 1726247812
+    },
+    "discorddevbanner": {
+      "source": "equicord",
+      "addedAt": 1752437133
+    },
+    "downloadallattachments": {
+      "source": "equicord",
+      "addedAt": 1778685390
+    },
+    "draftnavigator": {
+      "source": "equicord",
+      "addedAt": 1793027177
+    },
+    "dragfavoriteemotes": {
+      "source": "equicord",
+      "addedAt": 1767714762
+    },
+    "dragify": {
+      "source": "equicord",
+      "addedAt": 1770324427
+    },
+    "duplicatecategory": {
+      "source": "equicord",
+      "addedAt": 1794403275
+    },
+    "equissant": {
+      "source": "equicord",
+      "addedAt": 1742232372
+    },
+    "equitweaks": {
+      "source": "equicord",
+      "addedAt": 1792412743
+    },
+    "exitsounds": {
+      "source": "equicord",
+      "addedAt": 1764102892
+    },
+    "exportmessages": {
+      "source": "equicord",
+      "addedAt": 1751887558
+    },
+    "fastdeletechannels": {
+      "source": "equicord",
+      "addedAt": 1747282760
+    },
+    "favoriteanything": {
+      "source": "equicord",
+      "addedAt": 1792411592
+    },
+    "fileupload": {
+      "source": "equicord",
+      "addedAt": 1769310354
+    },
+    "findreply": {
+      "source": "equicord",
+      "addedAt": 1713378587
+    },
+    "fixfileextensions": {
+      "source": "equicord",
+      "addedAt": 1730009261
+    },
+    "followvoiceuser": {
+      "source": "equicord",
+      "addedAt": 1741030111
+    },
+    "fontloader": {
+      "source": "equicord",
+      "addedAt": 1738274067
+    },
+    "frequentquickswitcher": {
+      "source": "equicord",
+      "addedAt": 1721339330
+    },
+    "friendcodes": {
+      "source": "equicord",
+      "addedAt": 1741630049
+    },
+    "friendshipranks": {
+      "source": "equicord",
+      "addedAt": 1714798259
+    },
+    "friendtags": {
+      "source": "equicord",
+      "addedAt": 1721339330
+    },
+    "fullvcpfp": {
+      "source": "equicord",
+      "addedAt": 1738653224
+    },
+    "ghosted": {
+      "source": "equicord",
+      "addedAt": 1765298636
+    },
+    "gifcollections": {
+      "source": "equicord",
+      "addedAt": 1713378587
+    },
+    "gifmaker": {
+      "source": "equicord",
+      "addedAt": 1781569830
+    },
+    "githubrepos": {
+      "source": "equicord",
+      "addedAt": 1742190053
+    },
+    "globalbadges": {
+      "source": "equicord",
+      "addedAt": 1713378587
+    },
+    "googlethat": {
+      "source": "equicord",
+      "addedAt": 1721339330
+    },
+    "guildpickerdumper": {
+      "source": "equicord",
+      "addedAt": 1746839537
+    },
+    "hidechatbuttons": {
+      "source": "equicord",
+      "addedAt": 1730132234
+    },
+    "hidemessages": {
+      "source": "equicord",
+      "addedAt": 1772027252
+    },
+    "hideservers": {
+      "source": "equicord",
+      "addedAt": 1725580936
+    },
+    "hometyping": {
+      "source": "equicord",
+      "addedAt": 1721339330
+    },
+    "hopon": {
+      "source": "equicord",
+      "addedAt": 1713378587
+    },
+    "husk": {
+      "source": "equicord",
+      "addedAt": 1722455554
+    },
+    "iconviewer": {
+      "source": "equicord",
+      "addedAt": 1741630049
+    },
+    "idleautorestart": {
+      "source": "equicord",
+      "addedAt": 1765553281
+    },
+    "ignorecalls": {
+      "source": "equicord",
+      "addedAt": 1741118218
+    },
+    "ingtoninator": {
+      "source": "equicord",
+      "addedAt": 1747424385
+    },
+    "inrole": {
+      "source": "equicord",
+      "addedAt": 1722455554
+    },
+    "instantscreenshare": {
+      "source": "equicord",
+      "addedAt": 1744000419
+    },
+    "invisiblechat.desktop": {
+      "source": "equicord",
+      "addedAt": 1763527730
+    },
+    "invitedefaults": {
+      "source": "equicord",
+      "addedAt": 1753744647
+    },
+    "irememberyou": {
+      "source": "equicord",
+      "addedAt": 1713378587
+    },
+    "jumpto": {
+      "source": "equicord",
+      "addedAt": 1757944428
+    },
+    "keyboardnavigation": {
+      "source": "equicord",
+      "addedAt": 1760585513
+    },
+    "keyboardsounds": {
+      "source": "equicord",
+      "addedAt": 1713378587
+    },
+    "keywordnotify": {
+      "source": "equicord",
+      "addedAt": 1713378587
+    },
+    "lastactive": {
+      "source": "equicord",
+      "addedAt": 1744201625
+    },
+    "limitlessscreenshare": {
+      "source": "equicord",
+      "addedAt": 1780498312
+    },
+    "loginwithqr": {
+      "source": "equicord",
+      "addedAt": 1721622507
+    },
+    "markdowntables": {
+      "source": "equicord",
+      "addedAt": 1779195173
+    },
+    "mediaplaybackspeed": {
+      "source": "equicord",
+      "addedAt": 1723353158
+    },
+    "messageburst": {
+      "source": "equicord",
+      "addedAt": 1739069609
+    },
+    "messagecolors": {
+      "source": "equicord",
+      "addedAt": 1723140646
+    },
+    "messagefetchtimer": {
+      "source": "equicord",
+      "addedAt": 1748743919
+    },
+    "messagelinktooltip": {
+      "source": "equicord",
+      "addedAt": 1713378587
+    },
+    "messageloggerenhanced": {
+      "source": "equicord",
+      "addedAt": 1713378587
+    },
+    "messagenotifier": {
+      "source": "equicord",
+      "addedAt": 1764024793
+    },
+    "messagepeek": {
+      "source": "equicord",
+      "addedAt": 1729976378
+    },
+    "messagetranslate": {
+      "source": "equicord",
+      "addedAt": 1721339330
+    },
+    "micloopbacktester": {
+      "source": "equicord",
+      "addedAt": 1766689398
+    },
+    "middleclicktweaks": {
+      "source": "equicord",
+      "addedAt": 1771363423
+    },
+    "morecommands": {
+      "source": "equicord",
+      "addedAt": 1748526607
+    },
+    "morestickers.desktop": {
+      "source": "equicord",
+      "addedAt": 1793154695
+    },
+    "moreusertags": {
+      "source": "equicord",
+      "addedAt": 1738012897
+    },
+    "moyai": {
+      "source": "equicord",
+      "addedAt": 1748134443
+    },
+    "musiccontrols": {
+      "source": "equicord",
+      "addedAt": 1754763607
+    },
+    "neverpausepreviews": {
+      "source": "equicord",
+      "addedAt": 1734121071
+    },
+    "nonitroupsell": {
+      "source": "equicord",
+      "addedAt": 1713378587
+    },
+    "nopushtotalk": {
+      "source": "equicord",
+      "addedAt": 1771863211
+    },
+    "normalizemessagelinks": {
+      "source": "equicord",
+      "addedAt": 1770333286
+    },
+    "noroleheaders": {
+      "source": "equicord",
+      "addedAt": 1721339330
+    },
+    "norpc.discorddesktop": {
+      "source": "equicord",
+      "addedAt": 1748134443
+    },
+    "notificationtitle.discorddesktop": {
+      "source": "equicord",
+      "addedAt": 1755883072
+    },
+    "orbolaybridge": {
+      "source": "equicord",
+      "addedAt": 1751141055
+    },
+    "partymode": {
+      "source": "equicord",
+      "addedAt": 1748134443
+    },
+    "pendingfriendrequest": {
+      "source": "equicord",
+      "addedAt": 1776804582
+    },
+    "pingnotifications": {
+      "source": "equicord",
+      "addedAt": 1743725811
+    },
+    "pinicon": {
+      "source": "equicord",
+      "addedAt": 1728949086
+    },
+    "polishwording": {
+      "source": "equicord",
+      "addedAt": 1731547040
+    },
+    "profilesets": {
+      "source": "equicord",
+      "addedAt": 1769917200
+    },
+    "questify": {
+      "source": "equicord",
+      "addedAt": 1754058997
+    },
+    "quickthemeswitcher.discorddesktop": {
+      "source": "equicord",
+      "addedAt": 1762698009
+    },
+    "quoter": {
+      "source": "equicord",
+      "addedAt": 1713378587
+    },
+    "randomvoice": {
+      "source": "equicord",
+      "addedAt": 1742190140
+    },
+    "reactiontimestamps": {
+      "source": "equicord",
+      "addedAt": 1789322291
+    },
+    "recentdmswitcher": {
+      "source": "equicord",
+      "addedAt": 1759411666
+    },
+    "remix": {
+      "source": "equicord",
+      "addedAt": 1741836423
+    },
+    "repeatmessages": {
+      "source": "equicord",
+      "addedAt": 1763342215
+    },
+    "replypingcontrol": {
+      "source": "equicord",
+      "addedAt": 1713378587
+    },
+    "richmagnetlinks": {
+      "source": "equicord",
+      "addedAt": 1763325861
+    },
+    "richpresence": {
+      "source": "equicord",
+      "addedAt": 1772901281
+    },
+    "rpceditor": {
+      "source": "equicord",
+      "addedAt": 1738352834
+    },
+    "savefavoritegifs": {
+      "source": "equicord",
+      "addedAt": 1752539599
+    },
+    "scheduledmessages": {
+      "source": "equicord",
+      "addedAt": 1764893221
+    },
+    "searchfix": {
+      "source": "equicord",
+      "addedAt": 1713378587
+    },
+    "sedenhanced": {
+      "source": "equicord",
+      "addedAt": 1782274307
+    },
+    "sekaistickers": {
+      "source": "equicord",
+      "addedAt": 1713378587
+    },
+    "serversearch": {
+      "source": "equicord",
+      "addedAt": 1719255884
+    },
+    "showbadgesinchat": {
+      "source": "equicord",
+      "addedAt": 1713378587
+    },
+    "showmessageembeds": {
+      "source": "equicord",
+      "addedAt": 1757112163
+    },
+    "showresourcechannels": {
+      "source": "equicord",
+      "addedAt": 1754434109
+    },
+    "showrolesinchat": {
+      "source": "equicord",
+      "addedAt": 1783898522
+    },
+    "showsongname": {
+      "source": "equicord",
+      "addedAt": 1768667823
+    },
+    "sidebarchat": {
+      "source": "equicord",
+      "addedAt": 1729401762
+    },
+    "signature": {
+      "source": "equicord",
+      "addedAt": 1732141049
+    },
+    "silenceusers": {
+      "source": "equicord",
+      "addedAt": 1776805463
+    },
+    "snowfall": {
+      "source": "equicord",
+      "addedAt": 1762371894
+    },
+    "songlink.desktop": {
+      "source": "equicord",
+      "addedAt": 1761749097
+    },
+    "songspotlight.desktop": {
+      "source": "equicord",
+      "addedAt": 1772467578
+    },
+    "splitlargemessages": {
+      "source": "equicord",
+      "addedAt": 1746116987
+    },
+    "statuspresets": {
+      "source": "equicord",
+      "addedAt": 1729016311
+    },
+    "statuswhileactive.desktop": {
+      "source": "equicord",
+      "addedAt": 1759156930
+    },
+    "steamstatussync": {
+      "source": "equicord",
+      "addedAt": 1722455554
+    },
+    "stickerblocker": {
+      "source": "equicord",
+      "addedAt": 1721886985
+    },
+    "stopautounread": {
+      "source": "equicord",
+      "addedAt": 1781297598
+    },
+    "streaks": {
+      "source": "equicord",
+      "addedAt": 1778293962
+    },
+    "streamingcodecdisabler": {
+      "source": "equicord",
+      "addedAt": 1749146015
+    },
+    "talkinreverse": {
+      "source": "equicord",
+      "addedAt": 1714083156
+    },
+    "themelibrary": {
+      "source": "equicord",
+      "addedAt": 1714798259
+    },
+    "tidalembeds": {
+      "source": "equicord",
+      "addedAt": 1749587587
+    },
+    "timezones": {
+      "source": "equicord",
+      "addedAt": 1724084383
+    },
+    "title": {
+      "source": "equicord",
+      "addedAt": 1713378587
+    },
+    "toastnotifications": {
+      "source": "equicord",
+      "addedAt": 1745775642
+    },
+    "togglevideobind": {
+      "source": "equicord",
+      "addedAt": 1738772559
+    },
+    "toneindicators": {
+      "source": "equicord",
+      "addedAt": 1757486162
+    },
+    "translateplus": {
+      "source": "equicord",
+      "addedAt": 1721286421
+    },
+    "triviaai": {
+      "source": "equicord",
+      "addedAt": 1771988543
+    },
+    "unitconverter": {
+      "source": "equicord",
+      "addedAt": 1722455554
+    },
+    "universalmention": {
+      "source": "equicord",
+      "addedAt": 1762186156
+    },
+    "unlimitedaccounts": {
+      "source": "equicord",
+      "addedAt": 1713378587
+    },
+    "unreadbadgecount": {
+      "source": "equicord",
+      "addedAt": 1722975503
+    },
+    "urlhighlighter": {
+      "source": "equicord",
+      "addedAt": 1764869262
+    },
+    "userpfp": {
+      "source": "equicord",
+      "addedAt": 1713634783
+    },
+    "vcpanelsettings": {
+      "source": "equicord",
+      "addedAt": 1741630049
+    },
+    "voicebuttons": {
+      "source": "equicord",
+      "addedAt": 1758404990
+    },
+    "voicechannellog": {
+      "source": "equicord",
+      "addedAt": 1726265606
+    },
+    "voicechatutils": {
+      "source": "equicord",
+      "addedAt": 1713378587
+    },
+    "voicejoinmessages": {
+      "source": "equicord",
+      "addedAt": 1726265606
+    },
+    "voicemessagesinbackground": {
+      "source": "equicord",
+      "addedAt": 1788354055
+    },
+    "voicemessagetranscriber.desktop": {
+      "source": "equicord",
+      "addedAt": 1768678889
+    },
+    "voicerejoin": {
+      "source": "equicord",
+      "addedAt": 1763324637
+    },
+    "voicestats": {
+      "source": "equicord",
+      "addedAt": 1778102640
+    },
+    "waitforslot": {
+      "source": "equicord",
+      "addedAt": 1770745155
+    },
+    "webpacktarball": {
+      "source": "equicord",
+      "addedAt": 1721283283
+    },
+    "whitelistedemojis": {
+      "source": "equicord",
+      "addedAt": 1730228640
+    },
+    "whoswatching": {
+      "source": "equicord",
+      "addedAt": 1713378587
+    },
+    "wigglytext": {
+      "source": "equicord",
+      "addedAt": 1721423368
+    },
+    "writeuppercase": {
+      "source": "equicord",
+      "addedAt": 1727798179
+    },
+    "zippreview": {
+      "source": "equicord",
+      "addedAt": 1759865916
+    }
+  },
   "userPlugins": {
     "customfont": {
       "source": "imcord",
