@@ -36,22 +36,12 @@
         "bump": "./scripts/bump.sh"
     },
     "dependencies": {
-        "@ffmpeg/ffmpeg": "catalog:",
-        "@ffmpeg/util": "catalog:",
         "@intrnl/xxhash64": "catalog:",
-        "@song-spotlight/api": "catalog:",
-        "@streamparser/json": "catalog:",
         "@vap/core": "catalog:",
         "@vap/shiki": "catalog:",
         "@vencord/monaco-editor": "catalog:",
         "fflate": "catalog:",
-        "gifenc": "catalog:",
-        "gifuct-js": "catalog:",
-        "idb": "catalog:",
-        "jsqr": "catalog:",
-        "nanoid": "catalog:",
-        "native-file-system-adapter": "catalog:",
-        "yaml-js": "catalog:"
+        "gifenc": "catalog:"
     },
     "devDependencies": {
         "@stylistic/eslint-plugin": "catalog:",
@@ -68,7 +58,6 @@
         "eslint-plugin-simple-import-sort": "catalog:",
         "html-minifier-terser": "catalog:",
         "lodash": "catalog:",
-        "md5": "catalog:",
         "moment": "catalog:",
         "oxfmt": "catalog:",
         "oxlint": "catalog:",

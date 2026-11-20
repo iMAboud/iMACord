@@ -109,8 +109,7 @@ export async function buildOrWatchAll(buildConfigs) {
     }
 }
 
-const PluginDefinitionNameMatcher = /definePlugin\(\s*\{\s*(["'])?name\1:\s*(["'`])(.+?)\2/;
-const PluginDefinitionFallbackNameMatcher = /definePlugin\([\s\S]{0,600}?\bname\s*:\s*(["'`])(.+?)\1/;
+const PluginDefinitionNameMatcher = /definePlugin\(\{\s*(["'])?name\1:\s*(["'`])(.+?)\2/;
 /**
  * @param {string} base
  * @param {import("fs").Dirent} dirent
@@ -131,9 +130,8 @@ export async function resolvePluginName(base, dirent) {
         })();
 
     return PluginDefinitionNameMatcher.exec(content)?.[3]
-        ?? PluginDefinitionFallbackNameMatcher.exec(content)?.[2]
         ?? (() => {
-            throw new Error(`Invalid plugin ${fullPath}: must contain definePlugin call with simple string name property`);
+            throw new Error(`Invalid plugin ${fullPath}: must contain definePlugin call with simple string name property as first property`);
         })();
 }
 
@@ -156,7 +154,7 @@ export const makeAllPackagesExternalPlugin = {
 };
 
 /**
- * @type {(kind: "web" | "discordDesktop" | "vesktop" | "equibop") => import("esbuild").Plugin}
+ * @type {(kind: "web" | "discordDesktop" | "vesktop") => import("esbuild").Plugin}
  */
 export const globPlugins = kind => ({
     name: "glob-plugins",
@@ -170,23 +168,12 @@ export const globPlugins = kind => ({
         });
 
         build.onLoad({ filter, namespace: "import-plugins" }, async () => {
-            const pluginDirs = [
-                "plugins/_api",
-                "plugins/_core",
-                "plugins",
-                "equicordplugins/_api",
-                "equicordplugins/_core",
-                "equicordplugins",
-                "userplugins"
-            ];
+            const pluginDirs = ["plugins/_api", "plugins/_core", "plugins", "userplugins"];
             const metadataPath = resolve(import.meta.dirname, "../pluginMetadata.json");
-            let metadata = { folders: {}, equicordFolders: {}, userPlugins: {} };
+            let metadata = { folders: {}, userPlugins: {} };
             try {
                 metadata = JSON.parse(await readFile(metadataPath, "utf-8"));
             } catch { }
-            const excludedEquicord = new Set(["equicordhelper", "equicordtoolbox", "newpluginsmanager"]);
-            const userPluginNames = new Set(Object.keys(metadata.userPlugins ?? {}).map(k => k.toLowerCase()));
-            const seenPluginNames = new Set();
             let code = "";
             let pluginsCode = "\n";
             let metaCode = "\n";
@@ -194,9 +181,6 @@ export const globPlugins = kind => ({
             let i = 0;
             for (const dir of pluginDirs) {
                 const userPlugin = dir === "userplugins";
-                const isEquicordDir = dir === "equicordplugins" || dir.startsWith("equicordplugins/");
-                const isInternalVencordDir = dir === "plugins/_api" || dir === "plugins/_core";
-                const isInternalEquicordDir = dir === "equicordplugins/_api" || dir === "equicordplugins/_core";
 
                 const fullDir = `./src/${dir}`;
                 if (!await exists(fullDir)) continue;
@@ -207,7 +191,6 @@ export const globPlugins = kind => ({
                     if (fileName === "index.ts") continue;
                     const cleanBaseName = fileName.replace(/\.(tsx?|jsx?)$/, "").toLowerCase();
                     if (["curshare", "alwayshidenonvideo", "focus", "superdebloat", "fucknitro", "discorddebloater"].includes(cleanBaseName)) continue;
-                    if (isEquicordDir && excludedEquicord.has(cleanBaseName)) continue;
 
                     const target = getPluginTarget(fileName);
 
@@ -218,8 +201,7 @@ export const globPlugins = kind => ({
                             (target === "browser" && kind !== "web") ||
                             (target === "desktop" && kind === "web") ||
                             (target === "discordDesktop" && kind !== "discordDesktop") ||
-                            (target === "vesktop" && kind !== "vesktop") ||
-                            (target === "equibop" && kind !== "equibop");
+                            (target === "vesktop" && kind !== "vesktop");
 
                         if (excluded) {
                             const name = await resolvePluginName(fullDir, file);
@@ -228,29 +210,15 @@ export const globPlugins = kind => ({
                         }
                     }
 
-                    let resolvedName = null;
-                    try {
-                        resolvedName = await resolvePluginName(fullDir, file);
-                    } catch { }
-                    if (resolvedName) {
-                        const nameKey = resolvedName.toLowerCase();
-                        if (seenPluginNames.has(nameKey)) continue;
-                        if (isEquicordDir && !isInternalEquicordDir && userPluginNames.has(nameKey)) continue;
-                        seenPluginNames.add(nameKey);
-                    }
-
                     const folderName = `src/${dir}/${fileName}`.replace(/^src\/plugins\//, "");
                     const isCustomUserPlugin = userPlugin || cleanBaseName === "imamenu";
                     const folderKey = fileName.toLowerCase();
+                    const isInternalVencordDir = dir === "plugins/_api" || dir === "plugins/_core";
                     const entry = isInternalVencordDir
                         ? { source: "vencord", addedAt: 0 }
-                        : isInternalEquicordDir
-                            ? { source: "equicord", addedAt: 0 }
-                            : isEquicordDir
-                                ? (metadata.equicordFolders?.[folderKey] ?? { source: "equicord", addedAt: 0 })
-                                : (userPlugin
-                                    ? (metadata.userPlugins?.[cleanBaseName] ?? { source: "imcord", addedAt: 0 })
-                                    : (metadata.folders?.[folderKey] ?? { source: "imcord", addedAt: 0 }));
+                        : (userPlugin
+                            ? (metadata.userPlugins?.[cleanBaseName] ?? { source: "imcord", addedAt: 0 })
+                            : (metadata.folders?.[folderKey] ?? { source: "imcord", addedAt: 0 }));
 
                     const mod = `p${i}`;
                     code += `import ${mod} from "./${dir}/${fileName.replace(/\.(tsx?|jsx?)$/, "")}";\n`;

@@ -16,32 +16,25 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-import * as $AudioPlayer from "./AudioPlayer";
 import * as $Badges from "./Badges";
 import * as $ChatButtons from "./ChatButtons";
 import * as $Commands from "./Commands";
 import * as $ContextMenu from "./ContextMenu";
 import * as $DataStore from "./DataStore";
-import * as $HeaderBar from "./HeaderBar";
 import * as $MemberListDecorators from "./MemberListDecorators";
 import * as $MessageAccessories from "./MessageAccessories";
 import * as $MessageDecorations from "./MessageDecorations";
 import * as $MessageEventsAPI from "./MessageEvents";
 import * as $MessagePopover from "./MessagePopover";
 import * as $MessageUpdater from "./MessageUpdater";
-import * as $NicknameIcons from "./NicknameIcons";
 import * as $Notices from "./Notices";
 import * as $Notifications from "./Notifications";
 export * as PluginManager from "./PluginManager";
 export * as UserPluginManager from "./UserPluginManager";
-import * as $ProfileCollections from "./ProfileCollections";
-import * as $ProfileSections from "./ProfileSections";
 import * as $ServerList from "./ServerList";
 import * as $Settings from "./Settings";
 import * as $Styles from "./Styles";
-import * as $SurfaceClasses from "./SurfaceClasses";
 import * as $Themes from "./Themes";
-import * as $UserArea from "./UserArea";
 import * as $UserSettings from "./UserSettings";
 
 /**
@@ -137,11 +130,3 @@ export const UserSettings = $UserSettings;
  * Don't use this
  */
 export const Themes = $Themes;
-
-export const AudioPlayer = $AudioPlayer;
-export const HeaderBar = $HeaderBar;
-export const NicknameIcons = $NicknameIcons;
-export const ProfileCollections = $ProfileCollections;
-export const ProfileSections = $ProfileSections;
-export const SurfaceClasses = $SurfaceClasses;
-export const UserArea = $UserArea;

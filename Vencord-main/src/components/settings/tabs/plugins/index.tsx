@@ -91,7 +91,6 @@ const enum SearchStatus {
     PINNED,
     IMCORD,
     VENCORD,
-    EQUICORD,
     FAVORITES,
     ENABLED,
     DISABLED,
@@ -101,8 +100,8 @@ const enum SearchStatus {
     API_PLUGINS
 }
 
-const NEW_RELEASE_WINDOW_SECONDS = 60 * 60 * 24 * 7;
-const NEW_SEEN_WINDOW_SECONDS = 60 * 60 * 24 * 7;
+const NEW_RELEASE_WINDOW_SECONDS = 60 * 60 * 24 * 21;
+const NEW_SEEN_WINDOW_SECONDS = 60 * 60 * 24 * 2;
 
 function ExcludedPluginsList({ search }: { search: string; }) {
     const matchingExcludedPlugins = search
@@ -114,7 +113,6 @@ function ExcludedPluginsList({ search }: { search: string; }) {
         desktop: "Discord Desktop app or Vesktop",
         discordDesktop: "Discord Desktop app",
         vesktop: "Vesktop app",
-        equibop: "Equibop app",
         web: "Vesktop app and the Web version of Discord",
         dev: "Developer version of iMACord",
         browser: "Web Browser version of iMACord"
@@ -206,17 +204,10 @@ function PluginSettings() {
 
     const newPluginSet = useMemo(() => {
         const now = Date.now() / 1000;
-        const discoveredSet = new Set<string>(discoveredNewPlugins ?? []);
-        const set = new Set<string>();
+        const set = new Set<string>(discoveredNewPlugins ?? []);
         for (const p of Object.values(Plugins)) {
             const addedAt = PluginMeta[p.name]?.addedAt ?? 0;
-            if (addedAt > 0) {
-                // Known release/addition date: strictly NEW for 7 days, then automatically removed
-                if ((now - addedAt) <= NEW_RELEASE_WINDOW_SECONDS) {
-                    set.add(p.name);
-                }
-            } else if (discoveredSet.has(p.name)) {
-                // Unknown date (e.g. manually dropped custom script): fall back to 7-day local discovery window
+            if (addedAt > 0 && (now - addedAt) <= NEW_RELEASE_WINDOW_SECONDS) {
                 set.add(p.name);
             }
         }
@@ -300,9 +291,6 @@ function PluginSettings() {
                 break;
             case SearchStatus.VENCORD:
                 if (source !== "vencord") return false;
-                break;
-            case SearchStatus.EQUICORD:
-                if (source !== "equicord") return false;
                 break;
             case SearchStatus.FAVORITES:
                 if (!settings.plugins[plugin.name]?.isFavorite) return false;
@@ -468,7 +456,6 @@ function PluginSettings() {
                             { label: "Show Pinned", value: SearchStatus.PINNED },
                             { label: "Show iMCord Plugins", value: SearchStatus.IMCORD },
                             { label: "Show Vencord Plugins", value: SearchStatus.VENCORD },
-                            { label: "Show Equicord Plugins", value: SearchStatus.EQUICORD },
                             { label: "Show Favorites", value: SearchStatus.FAVORITES },
                             { label: "Show Enabled", value: SearchStatus.ENABLED },
                             { label: "Show Disabled", value: SearchStatus.DISABLED },

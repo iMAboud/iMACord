@@ -1,3 +1,0 @@
-# AtSomeone
-
-Mention someone randomly

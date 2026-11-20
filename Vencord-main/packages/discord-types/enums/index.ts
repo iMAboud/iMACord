@@ -8,4 +8,3 @@ export * from "./misc";
 export * from "./settings";
 export * from "./user";
 export * from "./voice";
-export * from "./quests";

@@ -87,7 +87,7 @@ function toDirectoryBadge(b: ProfileBadge, userId: string): DirectoryBadge {
     };
 }
 
-export function BadgeContextMenu({ badge }: { badge: Omit<ProfileBadge, "id"> & BadgeUserArgs; }) {
+function BadgeContextMenu({ badge }: { badge: Omit<ProfileBadge, "id"> & BadgeUserArgs; }) {
     return (
         <Menu.Menu
             navId="vc-badge-context"

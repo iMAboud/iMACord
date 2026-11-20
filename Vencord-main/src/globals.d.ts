@@ -42,7 +42,6 @@ declare global {
     export var IS_ANTI_CRASH_TEST: boolean;
     export var IS_DISCORD_DESKTOP: boolean;
     export var IS_VESKTOP: boolean;
-    export var IS_EQUIBOP: boolean;
     export var VERSION: string;
     export var BUILD_TIMESTAMP: number;
     export var DESKTOP_MONACO_EDITOR_URL: string;

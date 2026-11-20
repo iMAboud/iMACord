@@ -19,43 +19,33 @@
 import ErrorBoundary from "@components/ErrorBoundary";
 import { ComponentType } from "react";
 
-export { ServerListItem, type ServerListItemBadgeProps, type ServerListItemIconProps, type ServerListItemProps } from "@components/ServerListItem";
-
 export const enum ServerListRenderPosition {
     Above,
     In,
-    Below,
 }
 
-const componentsIn = new Map<ComponentType, number>();
-const componentsAbove = new Map<ComponentType, number>();
-const componentsBelow = new Map<ComponentType, number>();
+const componentsAbove = new Set<ComponentType>();
+const componentsBelow = new Set<ComponentType>();
 
-function getRenderMap(position: ServerListRenderPosition) {
-    switch (position) {
-        case ServerListRenderPosition.Above:
-            return componentsAbove;
-        case ServerListRenderPosition.In:
-            return componentsIn;
-        case ServerListRenderPosition.Below:
-            return componentsBelow;
-    }
+function getRenderFunctions(position: ServerListRenderPosition) {
+    return position === ServerListRenderPosition.Above ? componentsAbove : componentsBelow;
 }
 
-export function addServerListElement(position: ServerListRenderPosition, renderFunction: ComponentType, priority = 0) {
-    getRenderMap(position).set(renderFunction, priority);
+export function addServerListElement(position: ServerListRenderPosition, renderFunction: ComponentType) {
+    getRenderFunctions(position).add(renderFunction);
 }
 
 export function removeServerListElement(position: ServerListRenderPosition, renderFunction: ComponentType) {
-    getRenderMap(position).delete(renderFunction);
+    getRenderFunctions(position).delete(renderFunction);
 }
 
 export const renderAll = (position: ServerListRenderPosition) => {
-    return Array.from(getRenderMap(position).entries())
-        .sort((a, b) => b[1] - a[1])
-        .map(([Component], i) => (
+    return Array.from(
+        getRenderFunctions(position),
+        (Component, i) => (
             <ErrorBoundary noop key={i}>
                 <Component />
             </ErrorBoundary>
-        ));
+        )
+    );
 };

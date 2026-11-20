@@ -8,7 +8,7 @@ import { showNotice } from "@api/Notices";
 import { hasAnyVisibleSettings, isPluginEnabled, pluginRequiresRestart, startDependenciesRecursive, startPlugin, stopPlugin } from "@api/PluginManager";
 import { Settings } from "@api/Settings";
 import { deleteUserPlugin, getUserPluginCode } from "@api/UserPluginManager";
-import { CogWheel, InfoIcon } from "@components/Icons";
+import { CogWheel, InfoIcon, PinIcon } from "@components/Icons";
 import { AddonCard } from "@components/settings/AddonCard";
 import { PluginSourceBadge } from "@components/settings/PluginSourceBadge";
 import { classes } from "@utils/misc";
@@ -20,35 +20,6 @@ import { PluginMeta } from "~plugins";
 import { cl, logger } from ".";
 import { CustomPluginModal } from "./CustomPluginModal";
 import { openPluginModal } from "./PluginModal";
-
-function PluginPinIcon({ filled, className }: { filled?: boolean; className?: string; }) {
-    return (
-        <svg
-            className={className}
-            role="img"
-            width={18}
-            height={18}
-            viewBox="0 0 24 24"
-            fill={filled ? "currentColor" : "none"}
-        >
-            <path
-                d="M12 17v5"
-                stroke="currentColor"
-                strokeWidth={2}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                style={{ fill: "none" }}
-            />
-            <path
-                d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"
-                stroke="currentColor"
-                strokeWidth={2}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-            />
-        </svg>
-    );
-}
 
 interface PluginCardProps extends React.HTMLProps<HTMLDivElement> {
     plugin: Plugin;
@@ -181,7 +152,7 @@ export function PluginCard({ plugin, disabled, onRestartNeeded, onMouseEnter, on
                                     className={cl("info-button")}
                                     style={{ color: isPinned ? "#a78bfa" : undefined }}
                                 >
-                                    <PluginPinIcon className={classes(cl("info-icon"), "vc-icon")} filled={isPinned} />
+                                    <PinIcon className={classes(cl("info-icon"), "vc-icon")} width={18} height={18} filled={isPinned} />
                                 </button>
                             )}
                         </Tooltip>
