@@ -16,17 +16,23 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
+import { addAudioProcessor, removeAudioProcessor } from "@api/AudioPlayer";
 import { addProfileBadge, removeProfileBadge } from "@api/Badges";
-import { addChatBarButton, removeChatBarButton } from "@api/ChatButtons";
+import { addChatBarButton, addChatBarButtonWrapper, removeChatBarButton, removeChatBarButtonWrapper } from "@api/ChatButtons";
 import { registerCommand, unregisterCommand } from "@api/Commands";
 import { addContextMenuPatch, removeContextMenuPatch } from "@api/ContextMenu";
+import { addChannelToolbarButton, addHeaderBarButton, removeChannelToolbarButton, removeHeaderBarButton } from "@api/HeaderBar";
 import { addMemberListDecorator, removeMemberListDecorator } from "@api/MemberListDecorators";
 import { addMessageAccessory, removeMessageAccessory } from "@api/MessageAccessories";
 import { addMessageDecoration, removeMessageDecoration } from "@api/MessageDecorations";
 import { addMessageClickListener, addMessagePreEditListener, addMessagePreSendListener, removeMessageClickListener, removeMessagePreEditListener, removeMessagePreSendListener } from "@api/MessageEvents";
 import { addMessagePopoverButton, removeMessagePopoverButton } from "@api/MessagePopover";
+import { addNicknameIcon, removeNicknameIcon } from "@api/NicknameIcons";
+import { addProfileCollection, removeProfileCollection } from "@api/ProfileCollections";
+import { addProfileSection, removeProfileSection } from "@api/ProfileSections";
 import { Settings, SettingsStore } from "@api/Settings";
 import { disableStyle, enableStyle } from "@api/Styles";
+import { addUserAreaButton, removeUserAreaButton } from "@api/UserArea";
 import { traceFunction } from "@debug/Tracer";
 import { Logger } from "@utils/Logger";
 import { onlyOnce } from "@utils/onlyOnce";
@@ -51,6 +57,12 @@ export function isPluginEnabled(p: string) {
         Plugins[p]?.required ||
         Plugins[p]?.isDependency ||
         Settings.plugins[p]?.enabled
+    ) ?? false;
+}
+
+export function isPluginRequired(p: string) {
+    return (
+        Plugins[p]?.required
     ) ?? false;
 }
 
@@ -202,9 +214,10 @@ export function subscribeAllPluginsFluxEvents(fluxDispatcher: typeof FluxDispatc
 
 export const startPlugin = traceFunction("startPlugin", function startPlugin(p: Plugin) {
     const {
-        name, commands, contextMenus, managedStyle, userProfileBadge,
+        name, commands, contextMenus, managedStyle, userProfileBadge, userProfileBadges,
         onBeforeMessageEdit, onBeforeMessageSend, onMessageClick,
-        chatBarButton, renderMemberListDecorator, renderMessageAccessory, renderMessageDecoration, messagePopoverButton
+        chatBarButton, chatBarButtonWrapper, renderMemberListDecorator, renderMessageAccessory, renderMessageDecoration, messagePopoverButton,
+        renderNicknameIcon, headerBarButton, audioProcessor, userAreaButton, renderProfileCollection, renderProfileSection
     } = p;
 
     if (p.start) {
@@ -249,25 +262,40 @@ export const startPlugin = traceFunction("startPlugin", function startPlugin(p: 
     if (managedStyle) enableStyle(managedStyle);
 
     if (userProfileBadge) addProfileBadge(userProfileBadge);
+    if (userProfileBadges) userProfileBadges.forEach(e => addProfileBadge(e));
 
     if (onBeforeMessageEdit) addMessagePreEditListener(onBeforeMessageEdit);
     if (onBeforeMessageSend) addMessagePreSendListener(onBeforeMessageSend);
     if (onMessageClick) addMessageClickListener(onMessageClick);
 
     if (chatBarButton) addChatBarButton(name, chatBarButton.render, chatBarButton.icon);
+    if (chatBarButtonWrapper) addChatBarButtonWrapper(name, chatBarButtonWrapper.wrapper, chatBarButtonWrapper.priority);
     if (renderMemberListDecorator) addMemberListDecorator(name, renderMemberListDecorator);
     if (renderMessageDecoration) addMessageDecoration(name, renderMessageDecoration);
     if (renderMessageAccessory) addMessageAccessory(name, renderMessageAccessory);
     if (messagePopoverButton) addMessagePopoverButton(name, messagePopoverButton.render, messagePopoverButton.icon);
+    if (renderNicknameIcon) addNicknameIcon(name, renderNicknameIcon);
+    if (headerBarButton) {
+        if (headerBarButton.location === "channeltoolbar") {
+            addChannelToolbarButton(name, headerBarButton.render, headerBarButton.priority);
+        } else {
+            addHeaderBarButton(name, headerBarButton.render, headerBarButton.priority);
+        }
+    }
+    if (audioProcessor) addAudioProcessor(name, audioProcessor);
+    if (userAreaButton) addUserAreaButton(name, userAreaButton.render, userAreaButton.priority);
+    if (renderProfileCollection) addProfileCollection(name, renderProfileCollection.render, renderProfileCollection.priority);
+    if (renderProfileSection) addProfileSection(name, renderProfileSection.render, renderProfileSection.priority);
 
     return true;
 }, p => `startPlugin ${p.name}`);
 
 export const stopPlugin = traceFunction("stopPlugin", function stopPlugin(p: Plugin) {
     const {
-        name, commands, contextMenus, managedStyle, userProfileBadge,
+        name, commands, contextMenus, managedStyle, userProfileBadge, userProfileBadges,
         onBeforeMessageEdit, onBeforeMessageSend, onMessageClick,
-        chatBarButton, renderMemberListDecorator, renderMessageAccessory, renderMessageDecoration, messagePopoverButton
+        chatBarButton, chatBarButtonWrapper, renderMemberListDecorator, renderMessageAccessory, renderMessageDecoration, messagePopoverButton,
+        renderNicknameIcon, headerBarButton, audioProcessor, userAreaButton, renderProfileCollection, renderProfileSection
     } = p;
 
     if (p.stop) {
@@ -310,16 +338,30 @@ export const stopPlugin = traceFunction("stopPlugin", function stopPlugin(p: Plu
     if (managedStyle) disableStyle(managedStyle);
 
     if (userProfileBadge) removeProfileBadge(userProfileBadge);
+    if (userProfileBadges) userProfileBadges.forEach(e => removeProfileBadge(e));
 
     if (onBeforeMessageEdit) removeMessagePreEditListener(onBeforeMessageEdit);
     if (onBeforeMessageSend) removeMessagePreSendListener(onBeforeMessageSend);
     if (onMessageClick) removeMessageClickListener(onMessageClick);
 
     if (chatBarButton) removeChatBarButton(name);
+    if (chatBarButtonWrapper) removeChatBarButtonWrapper(name);
     if (renderMemberListDecorator) removeMemberListDecorator(name);
     if (renderMessageDecoration) removeMessageDecoration(name);
     if (renderMessageAccessory) removeMessageAccessory(name);
     if (messagePopoverButton) removeMessagePopoverButton(name);
+    if (renderNicknameIcon) removeNicknameIcon(name);
+    if (headerBarButton) {
+        if (headerBarButton.location === "channeltoolbar") {
+            removeChannelToolbarButton(name);
+        } else {
+            removeHeaderBarButton(name);
+        }
+    }
+    if (audioProcessor) removeAudioProcessor(name);
+    if (userAreaButton) removeUserAreaButton(name);
+    if (renderProfileCollection) removeProfileCollection(name);
+    if (renderProfileSection) removeProfileSection(name);
 
     return true;
 }, p => `stopPlugin ${p.name}`);
@@ -330,7 +372,8 @@ export const initPluginManager = onlyOnce(function init() {
 
     const pluginKeysToBind: Array<keyof PluginDef & `${"on" | "render"}${string}`> = [
         "onBeforeMessageEdit", "onBeforeMessageSend", "onMessageClick",
-        "renderMemberListDecorator", "renderMessageAccessory", "renderMessageDecoration"
+        "renderMemberListDecorator", "renderMessageAccessory", "renderMessageDecoration",
+        "renderNicknameIcon"
     ];
 
     const neededApiPlugins = new Set<string>();
@@ -360,12 +403,18 @@ export const initPluginManager = onlyOnce(function init() {
 
         if (p.commands?.length) neededApiPlugins.add("CommandsAPI");
         if (p.onBeforeMessageEdit || p.onBeforeMessageSend || p.onMessageClick) neededApiPlugins.add("MessageEventsAPI");
-        if (p.chatBarButton) neededApiPlugins.add("ChatInputButtonAPI");
+        if (p.chatBarButton || p.chatBarButtonWrapper) neededApiPlugins.add("ChatInputButtonAPI");
         if (p.renderMemberListDecorator) neededApiPlugins.add("MemberListDecoratorsAPI");
         if (p.renderMessageAccessory) neededApiPlugins.add("MessageAccessoriesAPI");
         if (p.renderMessageDecoration) neededApiPlugins.add("MessageDecorationsAPI");
         if (p.messagePopoverButton) neededApiPlugins.add("MessagePopoverAPI");
-        if (p.userProfileBadge) neededApiPlugins.add("BadgeAPI");
+        if (p.userProfileBadge || p.userProfileBadges?.length) neededApiPlugins.add("BadgeAPI");
+        if (p.renderNicknameIcon) neededApiPlugins.add("NicknameIconsAPI");
+        if (p.headerBarButton) neededApiPlugins.add("HeaderBarAPI");
+        if (p.audioProcessor) neededApiPlugins.add("AudioPlayerAPI");
+        if (p.userAreaButton) neededApiPlugins.add("UserAreaAPI");
+        if (p.renderProfileCollection) neededApiPlugins.add("ProfileCollectionsAPI");
+        if (p.renderProfileSection) neededApiPlugins.add("ProfileSectionsAPI");
 
         for (const key of pluginKeysToBind) {
             p[key] &&= p[key].bind(p) as any;

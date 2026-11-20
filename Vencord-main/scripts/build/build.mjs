@@ -33,6 +33,7 @@ const defines = stringifyValues({
     IS_WEB: false,
     IS_EXTENSION: false,
     IS_USERSCRIPT: false,
+    IS_EQUIBOP: false,
     VERSION,
     BUILD_TIMESTAMP,
     DESKTOP_MONACO_EDITOR_URL: await getMonacoEditorCdnUrl(),
@@ -75,7 +76,8 @@ const globNativesPlugin = {
         });
 
         build.onLoad({ filter, namespace: "import-natives" }, async () => {
-            const pluginDirs = ["plugins", "userplugins"];
+            const pluginDirs = ["plugins", "equicordplugins", "userplugins"];
+            const seenNativeNames = new Set();
             let code = "";
             let natives = "\n";
             let i = 0;
@@ -89,6 +91,7 @@ const globNativesPlugin = {
                 const plugins = await readdir(dirPath, { withFileTypes: true });
                 for (const file of plugins) {
                     const fileName = file.name;
+                    if (fileName.startsWith("_") || fileName.startsWith(".")) continue;
                     const nativePath = join(dirPath, fileName, "native.ts");
                     const indexNativePath = join(dirPath, fileName, "native/index.ts");
 
@@ -98,6 +101,9 @@ const globNativesPlugin = {
                         continue;
 
                     const pluginName = await resolvePluginName(dirPath, file);
+                    const nameKey = pluginName.toLowerCase();
+                    if (seenNativeNames.has(nameKey)) continue;
+                    seenNativeNames.add(nameKey);
 
                     const mod = `p${i}`;
                     code += `import * as ${mod} from "./${dir}/${fileName}/native";\n`;

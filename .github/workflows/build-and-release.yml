@@ -27,7 +27,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Sync Upstream Vencord Plugins & Fixes
+      - name: Sync Upstream Vencord & Equicord Plugins
         id: sync
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         run: node scripts/sync_upstream.mjs --fetch
@@ -111,7 +111,7 @@ jobs:
             if git diff --staged --quiet -- Vencord-main; then
               MSG="chore: update release manifest [skip ci]"
             else
-              MSG="chore: sync upstream Vencord (${{ steps.sync.outputs.upstream_sha }}) & update release manifest [skip ci]"
+              MSG="chore: sync upstream Vencord (${{ steps.sync.outputs.upstream_sha }}) & Equicord (${{ steps.sync.outputs.equicord_sha }}) & update release manifest [skip ci]"
             fi
             git commit -m "$MSG"
             git pull --rebase origin main || true

@@ -106,6 +106,44 @@ export let MessageRequestStore: t.MessageRequestStore;
 export let GIFPickerViewStore: t.GIFPickerViewStore;
 export let GuildReadStateStore: t.GuildReadStateStore;
 
+// Equicord compatibility stores
+export let QuestStore: any;
+export let ApplicationStreamingSettingsStore: t.ApplicationStreamingSettingsStore;
+export let ExpandedGuildFolderStore: any;
+export let AuthSessionsStore: any;
+export let GuildAvailabilityStore: any;
+export let BasicGuildStore: any;
+export let GuildProfileStore: any;
+export let ChannelAffinitiesStore: any;
+export let ActiveThreadsStore: any;
+export let CategoryCollapseStore: any;
+export let ChannelMemberCountStore: any;
+export let ChannelPinsStore: any;
+export let ChannelStatusStore: any;
+export let ContextMenuStore: any;
+export let FavoriteStore: any;
+export let FriendRequestsStore: any;
+export let FriendRowStore: any;
+export let GameStore: any;
+export let IdleStore: any;
+export let IncomingCallStore: any;
+export let KeybindsStore: any;
+export let LayerStore: any;
+export let MessageReactionsStore: any;
+export let NoteStore: any;
+export let RecentMentionsStore: any;
+export let SortedVoiceStateStore: any;
+export let SoundpackStore: any;
+export let SpatialAudioStore: any;
+export let SpeakingStore: any;
+export let StageInstanceStore: any;
+export let StickersPersistedStore: any;
+export let ThreadMembersStore: any;
+export let ThreadMessageStore: any;
+export let TopEmojiStore: any;
+export let UnsyncedUserSettingsStore: any;
+export let VoiceChannelEffectsStore: any;
+
 /**
  * @see jsdoc of {@link t.useStateFromStores}
  */
@@ -182,6 +220,42 @@ waitForStore("SelfPresenceStore", m => SelfPresenceStore = m);
 waitForStore("MessageRequestStore", m => MessageRequestStore = m);
 waitForStore("GIFPickerViewStore", m => GIFPickerViewStore = m);
 waitForStore("GuildReadStateStore", m => GuildReadStateStore = m);
+waitForStore("QuestStore", m => QuestStore = m);
+waitForStore("ApplicationStreamingSettingsStore", m => ApplicationStreamingSettingsStore = m);
+waitForStore("ExpandedGuildFolderStore", m => ExpandedGuildFolderStore = m);
+waitForStore("AuthSessionsStore", m => AuthSessionsStore = m);
+waitForStore("GuildAvailabilityStore", m => GuildAvailabilityStore = m);
+waitForStore("BasicGuildStore", m => BasicGuildStore = m);
+waitForStore("GuildProfileStore", m => GuildProfileStore = m);
+waitForStore("ChannelAffinitiesV2Store", m => ChannelAffinitiesStore = m);
+waitForStore("ActiveThreadsStore", m => ActiveThreadsStore = m);
+waitForStore("CategoryCollapseStore", m => CategoryCollapseStore = m);
+waitForStore("ChannelMemberCountStore", m => ChannelMemberCountStore = m);
+waitForStore("ChannelPinsStore", m => ChannelPinsStore = m);
+waitForStore("ChannelStatusStore", m => ChannelStatusStore = m);
+waitForStore("ContextMenuStore", m => ContextMenuStore = m);
+waitForStore("FavoriteStore", m => FavoriteStore = m);
+waitForStore("FriendRequestsStore", m => FriendRequestsStore = m);
+waitForStore("FriendRowStore", m => FriendRowStore = m);
+waitForStore("GameStore", m => GameStore = m);
+waitForStore("IdleStore", m => IdleStore = m);
+waitForStore("IncomingCallStore", m => IncomingCallStore = m);
+waitForStore("KeybindsStore", m => KeybindsStore = m);
+waitForStore("LayerStore", m => LayerStore = m);
+waitForStore("MessageReactionsStore", m => MessageReactionsStore = m);
+waitForStore("NoteStore", m => NoteStore = m);
+waitForStore("RecentMentionsStore", m => RecentMentionsStore = m);
+waitForStore("SortedVoiceStateStore", m => SortedVoiceStateStore = m);
+waitForStore("SoundpackStore", m => SoundpackStore = m);
+waitForStore("SpatialAudioStore", m => SpatialAudioStore = m);
+waitForStore("SpeakingStore", m => SpeakingStore = m);
+waitForStore("StageInstanceStore", m => StageInstanceStore = m);
+waitForStore("StickersPersistedStore", m => StickersPersistedStore = m);
+waitForStore("ThreadMembersStore", m => ThreadMembersStore = m);
+waitForStore("ThreadMessageStore", m => ThreadMessageStore = m);
+waitForStore("TopEmojiStore", m => TopEmojiStore = m);
+waitForStore("UnsyncedUserSettingsStore", m => UnsyncedUserSettingsStore = m);
+waitForStore("VoiceChannelEffectsStore", m => VoiceChannelEffectsStore = m);
 waitForStore("ThemeStore", m => {
     ThemeStore = m;
     // Importing this directly causes all webpack commons to be imported, which can easily cause circular dependencies.
