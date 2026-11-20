@@ -77,11 +77,6 @@ jobs:
         working-directory: Vencord-main
         run: node scripts/build/build.mjs --standalone
 
-      - name: Compile Standalone Installers (CLI & GUI)
-        if: steps.gate.outputs.run == 'true'
-        shell: cmd
-        run: call installer_src\build_installers.bat
-
       - name: Set Release Tag
         if: steps.gate.outputs.run == 'true'
         id: vars
@@ -95,6 +90,11 @@ jobs:
             echo "TAG_NAME=$TAG" >> $GITHUB_ENV
             echo "RELEASE_NAME=iMCord $TAG" >> $GITHUB_ENV
           fi
+
+      - name: Compile Standalone Installers (CLI & GUI)
+        if: steps.gate.outputs.run == 'true'
+        shell: cmd
+        run: call installer_src\build_installers.bat
 
       - name: Generate Release Manifest
         if: steps.gate.outputs.run == 'true'

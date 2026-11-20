@@ -28,31 +28,22 @@ namespace VencordInstaller
 
     public static class InstallerCore
     {
-        public static readonly string AppDataVencordDir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "Vencord"
-        );
-        public static readonly string VencordDistDir = Path.Combine(AppDataVencordDir, "dist");
-        public static readonly string VencordUserPluginsDir = Path.Combine(AppDataVencordDir, "userplugins");
-        public static readonly string PatcherJsPath = Path.Combine(VencordDistDir, "patcher.js");
-
-        public static readonly string[] EmbeddedDistFiles = new string[]
+        public static string AppDataVencordDir
         {
-            "patcher.js",
-            "preload.js",
-            "renderer.js",
-            "renderer.css"
-        };
-
-        public static readonly string[] EmbeddedPluginFiles = new string[]
+            get { return UpdaterCore.GetAppDataVencordDir(); }
+        }
+        public static string VencordDistDir
         {
-            "iMAMenu.js",
-            "MultiStreamPopout.js",
-            "VoiceReconnect.js",
-            "CustomFont.js",
-            "elementHider.js",
-            "MBdm.js"
-        };
+            get { return Path.Combine(AppDataVencordDir, "dist"); }
+        }
+        public static string VencordUserPluginsDir
+        {
+            get { return Path.Combine(AppDataVencordDir, "userplugins"); }
+        }
+        public static string PatcherJsPath
+        {
+            get { return Path.Combine(VencordDistDir, "patcher.js"); }
+        }
 
         private static readonly Dictionary<string, string> BranchNames = new Dictionary<string, string>()
         {
@@ -256,6 +247,11 @@ namespace VencordInstaller
 
         public static void ExtractEmbeddedPayload(Action<string> log = null)
         {
+            DeployPayload(null, log);
+        }
+
+        public static void DeployPayload(UpdateSyncResult sync, Action<string> log = null)
+        {
             if (log == null) log = delegate(string s) {};
 
             if (!Directory.Exists(VencordDistDir))
@@ -264,25 +260,144 @@ namespace VencordInstaller
             if (!Directory.Exists(VencordUserPluginsDir))
                 Directory.CreateDirectory(VencordUserPluginsDir);
 
-            Assembly asm = Assembly.GetExecutingAssembly();
+            CleanupTempFiles(VencordDistDir);
+            CleanupTempFiles(VencordUserPluginsDir);
 
-            foreach (string file in EmbeddedDistFiles)
+            EmbeddedManifest embedded = UpdaterCore.LoadEmbeddedManifest();
+            RemoteManifest remote = (sync != null) ? sync.Manifest : null;
+
+            if (remote != null && remote.dist != null && remote.dist.Count > 0)
             {
-                string target = Path.Combine(VencordDistDir, file);
-                if (ExtractResourceToFile(asm, file, target))
+                string cacheDistDir = UpdaterCore.GetCacheDistDir();
+                string cachePluginsDir = UpdaterCore.GetCachePluginsDir();
+
+                foreach (KeyValuePair<string, ManifestFileEntry> kvp in remote.dist)
                 {
-                    log("Extracted dist file: " + file);
+                    if (!UpdaterCore.IsSafeFileName(kvp.Key) || kvp.Value == null) continue;
+                    DeployVerifiedFile(kvp.Key, kvp.Value, true, VencordDistDir, cacheDistDir, embedded != null ? embedded.dist : null, log);
                 }
-                else
+
+                if (remote.plugins != null)
                 {
-                    log("Warning: Resource not found: " + file);
+                    foreach (KeyValuePair<string, ManifestFileEntry> kvp in remote.plugins)
+                    {
+                        if (!UpdaterCore.IsSafeFileName(kvp.Key) || kvp.Value == null) continue;
+                        DeployVerifiedFile(kvp.Key, kvp.Value, false, VencordUserPluginsDir, cachePluginsDir, embedded != null ? embedded.plugins : null, log);
+                    }
                 }
+
+                DeleteRemovedPlugins(remote);
+            }
+            else if (embedded != null)
+            {
+                if (embedded.dist != null)
+                {
+                    foreach (KeyValuePair<string, EmbeddedEntry> kvp in embedded.dist)
+                    {
+                        if (!UpdaterCore.IsSafeFileName(kvp.Key) || kvp.Value == null) continue;
+                        DeployBundledFile(kvp.Key, kvp.Value, VencordDistDir, log);
+                    }
+                }
+                if (embedded.plugins != null)
+                {
+                    foreach (KeyValuePair<string, EmbeddedEntry> kvp in embedded.plugins)
+                    {
+                        if (!UpdaterCore.IsSafeFileName(kvp.Key) || kvp.Value == null) continue;
+                        DeployBundledFile(kvp.Key, kvp.Value, VencordUserPluginsDir, log);
+                    }
+                }
+
+                DeleteRemovedPlugins(null);
+            }
+            else
+            {
+                throw new InvalidDataException("No bundled or downloaded payload manifest was found.");
             }
 
             string pkgJsonPath = Path.Combine(VencordDistDir, "package.json");
-            File.WriteAllText(pkgJsonPath, "{}", Encoding.UTF8);
+            if (!File.Exists(pkgJsonPath) || !string.Equals(File.ReadAllText(pkgJsonPath, Encoding.UTF8), "{}", StringComparison.Ordinal))
+            {
+                File.WriteAllText(pkgJsonPath, "{}", Encoding.UTF8);
+            }
 
-            string[] unwantedPlugins = new string[]
+            EnsureQuickCssSeparatorRule(log);
+        }
+
+        private static void DeployVerifiedFile(
+            string fileName,
+            ManifestFileEntry entry,
+            bool isDist,
+            string targetDir,
+            string cacheDir,
+            Dictionary<string, EmbeddedEntry> embeddedMap,
+            Action<string> log)
+        {
+            string expectedHash = (entry.hash ?? "").ToLowerInvariant();
+            string destPath = Path.Combine(targetDir, fileName);
+
+            if (!string.IsNullOrEmpty(expectedHash) &&
+                string.Equals(UpdaterCore.Sha256File(destPath), expectedHash, StringComparison.OrdinalIgnoreCase))
+            {
+                log("Verified up to date: " + fileName);
+                return;
+            }
+
+            string cachePath = Path.Combine(cacheDir, fileName);
+            if (!string.IsNullOrEmpty(expectedHash) &&
+                string.Equals(UpdaterCore.Sha256File(cachePath), expectedHash, StringComparison.OrdinalIgnoreCase))
+            {
+                UpdaterCore.CopyAtomic(cachePath, destPath);
+                log("Deployed updated " + (isDist ? "core" : "plugin") + ": " + fileName);
+                return;
+            }
+
+            if (embeddedMap != null)
+            {
+                EmbeddedEntry emb;
+                if (embeddedMap.TryGetValue(fileName, out emb) &&
+                    emb != null &&
+                    string.Equals(emb.hash, expectedHash, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (UpdaterCore.ExtractEmbeddedResourceVerified(emb.resource, expectedHash, destPath, true))
+                    {
+                        log("Extracted " + (isDist ? "dist file" : "plugin") + ": " + fileName);
+                        return;
+                    }
+                }
+            }
+
+            if (UpdaterCore.TryDownloadEntryToCache(fileName, entry, isDist, cachePath))
+            {
+                UpdaterCore.CopyAtomic(cachePath, destPath);
+                log("Downloaded " + (isDist ? "core" : "plugin") + ": " + fileName);
+                return;
+            }
+
+            throw new InvalidDataException("Failed to verify or download required file: " + fileName);
+        }
+
+        private static void DeployBundledFile(string fileName, EmbeddedEntry emb, string targetDir, Action<string> log)
+        {
+            string expectedHash = (emb.hash ?? "").ToLowerInvariant();
+            string destPath = Path.Combine(targetDir, fileName);
+
+            if (!string.IsNullOrEmpty(expectedHash) &&
+                string.Equals(UpdaterCore.Sha256File(destPath), expectedHash, StringComparison.OrdinalIgnoreCase))
+            {
+                log("Verified bundled: " + fileName);
+                return;
+            }
+
+            if (!UpdaterCore.ExtractEmbeddedResourceVerified(emb.resource, expectedHash, destPath, true))
+            {
+                throw new InvalidDataException("Bundled resource failed integrity check: " + fileName);
+            }
+            log("Extracted bundled: " + fileName);
+        }
+
+        private static void DeleteRemovedPlugins(RemoteManifest remote)
+        {
+            HashSet<string> toDelete = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             {
                 "AlwaysHideNonVideo.js",
                 "Focus.js",
@@ -299,7 +414,18 @@ namespace VencordInstaller
                 "discorddebloater.js",
                 "amongick.js"
             };
-            foreach (string unwanted in unwantedPlugins)
+
+            if (remote != null && remote.removedPlugins != null)
+            {
+                foreach (string p in remote.removedPlugins)
+                {
+                    if (!UpdaterCore.IsSafeFileName(p)) continue;
+                    if (remote.plugins != null && remote.plugins.ContainsKey(p)) continue;
+                    toDelete.Add(p);
+                }
+            }
+
+            foreach (string unwanted in toDelete)
             {
                 string unwantedPath = Path.Combine(VencordUserPluginsDir, unwanted);
                 if (File.Exists(unwantedPath))
@@ -307,21 +433,23 @@ namespace VencordInstaller
                     try { File.Delete(unwantedPath); } catch { }
                 }
             }
+        }
 
-            foreach (string plugin in EmbeddedPluginFiles)
+        private static void CleanupTempFiles(string dir)
+        {
+            try
             {
-                string target = Path.Combine(VencordUserPluginsDir, plugin);
-                if (ExtractResourceToFile(asm, plugin, target))
+                if (!Directory.Exists(dir)) return;
+                foreach (string f in Directory.GetFiles(dir, "*.tmp"))
                 {
-                    log("Extracted plugin: " + plugin);
+                    try { File.Delete(f); } catch { }
                 }
-                else
+                foreach (string f in Directory.GetFiles(dir, "*.download"))
                 {
-                    log("Warning: Resource not found: " + plugin);
+                    try { File.Delete(f); } catch { }
                 }
             }
-
-            EnsureQuickCssSeparatorRule(log);
+            catch { }
         }
 
         private static void EnsureQuickCssSeparatorRule(Action<string> log)
@@ -355,41 +483,6 @@ namespace VencordInstaller
             {
                 log("Notice: Could not update quickCss.css: " + ex.Message);
             }
-        }
-
-        private static bool ExtractResourceToFile(Assembly asm, string resourceKey, string targetPath)
-        {
-            string matchedName = null;
-            string[] names = asm.GetManifestResourceNames();
-
-            foreach (string n in names)
-            {
-                if (n.Equals(resourceKey, StringComparison.OrdinalIgnoreCase) ||
-                    n.EndsWith("." + resourceKey, StringComparison.OrdinalIgnoreCase) ||
-                    n.EndsWith("_" + resourceKey, StringComparison.OrdinalIgnoreCase))
-                {
-                    matchedName = n;
-                    break;
-                }
-            }
-
-            if (matchedName == null)
-                return false;
-
-            using (Stream s = asm.GetManifestResourceStream(matchedName))
-            {
-                if (s == null) return false;
-                using (FileStream fs = new FileStream(targetPath, FileMode.Create, FileAccess.Write, FileShare.None))
-                {
-                    byte[] buffer = new byte[81920];
-                    int bytesRead;
-                    while ((bytesRead = s.Read(buffer, 0, buffer.Length)) > 0)
-                    {
-                        fs.Write(buffer, 0, bytesRead);
-                    }
-                }
-            }
-            return true;
         }
 
         public static void WriteAppAsar(string outFile, string patcherPath)
@@ -432,12 +525,20 @@ namespace VencordInstaller
 
         public static void Install(DiscordInstall di, Action<string> log = null)
         {
+            Install(di, null, log);
+        }
+
+        public static void Install(DiscordInstall di, UpdateSyncResult sync, Action<string> log = null)
+        {
             if (log == null) log = delegate(string s) {};
 
-            log("Extracting Vencord runtime & custom plugins...");
-            ExtractEmbeddedPayload(log);
+            log("Deploying Vencord runtime & custom plugins...");
+            DeployPayload(sync, log);
 
-            bool wasRunning = IsDiscordRunning(di);
+            bool isSandboxTest = UpdaterCore.GetLoopbackManifestUrl() != null &&
+                                 !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("IMCORD_TEST_DIR"));
+
+            bool wasRunning = !isSandboxTest && IsDiscordRunning(di);
             if (wasRunning)
             {
                 log("Closing Discord process...");
@@ -483,8 +584,13 @@ namespace VencordInstaller
         {
             if (log == null) log = delegate(string s) {};
 
-            log("Closing Discord process if running...");
-            KillDiscord(di);
+            bool isSandboxTest = UpdaterCore.GetLoopbackManifestUrl() != null &&
+                                 !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("IMCORD_TEST_DIR"));
+            if (!isSandboxTest)
+            {
+                log("Closing Discord process if running...");
+                KillDiscord(di);
+            }
 
             string appAsar = Path.Combine(di.ResourcesPath, "app.asar");
             string backupAsar = Path.Combine(di.ResourcesPath, "_app.asar");
@@ -521,6 +627,7 @@ namespace VencordInstaller
             }
 
             log("Downloading OpenAsar...");
+            UpdaterCore.ConfigureNetworking();
             string url = "https://github.com/GooseMod/OpenAsar/releases/download/nightly/app.asar";
             using (System.Net.WebClient wc = new System.Net.WebClient())
             {

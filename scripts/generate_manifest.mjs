@@ -1,11 +1,7 @@
-import { createHash } from "crypto";
-import { existsSync, readdirSync, readFileSync, writeFileSync, appendFileSync } from "fs";
+import { existsSync, readFileSync, statSync, writeFileSync, appendFileSync } from "fs";
 import { join } from "path";
 import { execSync } from "child_process";
-
-function sha256(data) {
-    return createHash("sha256").update(data).digest("hex").toLowerCase();
-}
+import { computeInstallerCodeHashes, DIST_FILES, listPluginFiles, sha256Buffer, sha256File } from "./installer_meta.mjs";
 
 const rootDir = process.cwd();
 const distDir = join(rootDir, "Vencord-main", "dist");
@@ -35,9 +31,32 @@ prevManifest ??= localManifest;
 const tag = process.env.TAG_NAME;
 const assetUrl = file => tag ? `https://github.com/${repo}/releases/download/${tag}/${encodeURIComponent(file)}` : undefined;
 
+const { guiCodeHash, cliCodeHash } = computeInstallerCodeHashes(rootDir);
+
+function buildInstallerEntry(exeName, codeHash) {
+    const exePath = join(rootDir, exeName);
+    if (!existsSync(exePath)) return undefined;
+    const url = assetUrl(exeName);
+    return {
+        codeHash,
+        hash: sha256File(exePath),
+        size: statSync(exePath).size,
+        ...(url ? { url } : {})
+    };
+}
+
+const guiEntry = buildInstallerEntry("iMCord.exe", guiCodeHash);
+const cliEntry = buildInstallerEntry("iMCordCLI.exe", cliCodeHash);
+
 const manifest = {
     version: tag ?? process.env.GITHUB_REF_NAME ?? "1.0.0",
     updatedAt: new Date().toISOString(),
+    ...((guiEntry || cliEntry) ? {
+        installer: {
+            ...(guiEntry ? { gui: guiEntry } : {}),
+            ...(cliEntry ? { cli: cliEntry } : {})
+        }
+    } : {}),
     dist: {},
     plugins: {},
     removedPlugins: []
@@ -51,15 +70,14 @@ const releaseFiles = [
 ];
 
 // 1. Process Core Vencord dist files
-const distFiles = ["renderer.js", "renderer.css", "patcher.js", "preload.js"];
-for (const file of distFiles) {
+for (const file of DIST_FILES) {
     const fullPath = join(distDir, file);
     if (!existsSync(fullPath)) {
         console.error(`[ERROR] Missing core file: ${file}`);
         process.exit(1);
     }
     const buf = readFileSync(fullPath);
-    const hash = sha256(buf);
+    const hash = sha256Buffer(buf);
     const url = assetUrl(file);
     manifest.dist[file] = {
         hash,
@@ -74,11 +92,11 @@ for (const file of distFiles) {
 
 // 2. Process User Plugins
 if (existsSync(userpluginsDir)) {
-    const pluginFiles = readdirSync(userpluginsDir).filter(f => f.endsWith(".js"));
+    const pluginFiles = listPluginFiles(rootDir);
     for (const file of pluginFiles) {
         const fullPath = join(userpluginsDir, file);
         const buf = readFileSync(fullPath);
-        const hash = sha256(buf);
+        const hash = sha256Buffer(buf);
 
         let author = "iMAboud";
         let commit = undefined;

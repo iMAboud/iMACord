@@ -8,7 +8,7 @@ echo ===================================================
 echo Compiling Standalone iMACord CLI and GUI Installers
 echo ===================================================
 
-:: 1. Locate csc.exe
+:: 1. Locate csc.exe and node.exe
 set "DOTNET_DIR=C:\Windows\Microsoft.NET\Framework64\v4.0.30319"
 if not exist "%DOTNET_DIR%\csc.exe" (
     set "DOTNET_DIR=C:\Windows\Microsoft.NET\Framework\v4.0.30319"
@@ -18,40 +18,24 @@ if not exist "%DOTNET_DIR%\csc.exe" (
     exit /b 1
 )
 
+where node >nul 2>&1
+if %ERRORLEVEL% neq 0 (
+    echo [ERROR] node.exe was not found in PATH.
+    exit /b 1
+)
+
 set "CSC=%DOTNET_DIR%\csc.exe"
 set "WPF_DIR=%DOTNET_DIR%\WPF"
 
-:: 2. Verify Vencord dist artifacts
-if not exist "Vencord-main\dist\patcher.js" (
-    echo [ERROR] Vencord-main\dist\patcher.js not found.
-    echo Please compile Vencord first.
-    exit /b 1
-)
-if not exist "Vencord-main\dist\renderer.js" (
-    echo [ERROR] Vencord-main\dist\renderer.js not found.
-    echo Please compile Vencord first.
-    exit /b 1
+:: 2. Prepare GZip compressed payload resources & BuildInfo.cs
+echo [0/2] Preparing GZip payload resources and BuildInfo...
+call node scripts\prepare_installer_build.mjs
+if %ERRORLEVEL% neq 0 (
+    echo [ERROR] Failed to prepare installer build resources.
+    exit /b %ERRORLEVEL%
 )
 
-:: 3. Verify custom plugins
-if not exist "userplugins\iMAMenu.js" (
-    echo [ERROR] userplugins\iMAMenu.js not found in %ROOT_DIR%
-    exit /b 1
-)
-if not exist "userplugins\MultiStreamPopout.js" (
-    echo [ERROR] userplugins\MultiStreamPopout.js not found in %ROOT_DIR%
-    exit /b 1
-)
-if not exist "userplugins\VoiceReconnect.js" (
-    echo [ERROR] userplugins\VoiceReconnect.js not found in %ROOT_DIR%
-    exit /b 1
-)
-if not exist "userplugins\CustomFont.js" (
-    echo [ERROR] userplugins\CustomFont.js not found in %ROOT_DIR%
-    exit /b 1
-)
-
-:: 4. Verify Icon
+:: 3. Verify Icon
 set "ICON_PARAM="
 set "ICO_RES="
 if exist "iMCord.ico" (
@@ -67,20 +51,11 @@ if exist "iMCord.ico" (
 echo.
 echo [1/2] Building iMCordCLI.exe (Console)...
 "%CSC%" /nologo /target:exe /optimize+ /platform:anycpu ^
-    /reference:System.dll /reference:System.Core.dll ^
+    /reference:System.dll /reference:System.Core.dll /reference:"%DOTNET_DIR%\System.Web.Extensions.dll" ^
     %ICON_PARAM% %ICO_RES% ^
-    /resource:Vencord-main\dist\patcher.js,patcher.js ^
-    /resource:Vencord-main\dist\preload.js,preload.js ^
-    /resource:Vencord-main\dist\renderer.js,renderer.js ^
-    /resource:Vencord-main\dist\renderer.css,renderer.css ^
-    /resource:userplugins\iMAMenu.js,iMAMenu.js ^
-    /resource:userplugins\MultiStreamPopout.js,MultiStreamPopout.js ^
-    /resource:userplugins\VoiceReconnect.js,VoiceReconnect.js ^
-    /resource:userplugins\CustomFont.js,CustomFont.js ^
-    /resource:userplugins\elementHider.js,elementHider.js ^
-    /resource:userplugins\MBdm.js,MBdm.js ^
+    @installer_src\.build\csc_resources.rsp ^
     /out:iMCordCLI.exe ^
-    installer_src\InstallerCore.cs installer_src\ProgramCli.cs
+    installer_src\.build\BuildInfo.cs installer_src\UpdaterCore.cs installer_src\InstallerCore.cs installer_src\ProgramCli.cs
 
 if %ERRORLEVEL% neq 0 (
     echo [ERROR] Failed to compile iMCordCLI.exe
@@ -99,19 +74,11 @@ echo [2/2] Building iMCord.exe (WPF GUI)...
     /reference:System.Core.dll ^
     /reference:System.Drawing.dll ^
     /reference:System.Windows.Forms.dll ^
+    /reference:"%DOTNET_DIR%\System.Web.Extensions.dll" ^
     %ICON_PARAM% %ICO_RES% ^
-    /resource:Vencord-main\dist\patcher.js,patcher.js ^
-    /resource:Vencord-main\dist\preload.js,preload.js ^
-    /resource:Vencord-main\dist\renderer.js,renderer.js ^
-    /resource:Vencord-main\dist\renderer.css,renderer.css ^
-    /resource:userplugins\iMAMenu.js,iMAMenu.js ^
-    /resource:userplugins\MultiStreamPopout.js,MultiStreamPopout.js ^
-    /resource:userplugins\VoiceReconnect.js,VoiceReconnect.js ^
-    /resource:userplugins\CustomFont.js,CustomFont.js ^
-    /resource:userplugins\elementHider.js,elementHider.js ^
-    /resource:userplugins\MBdm.js,MBdm.js ^
+    @installer_src\.build\csc_resources.rsp ^
     /out:iMCord.exe ^
-    installer_src\InstallerCore.cs installer_src\ProgramGui.cs
+    installer_src\.build\BuildInfo.cs installer_src\UpdaterCore.cs installer_src\InstallerCore.cs installer_src\ProgramGui.cs
 
 if %ERRORLEVEL% neq 0 (
     echo [ERROR] Failed to compile iMCord.exe

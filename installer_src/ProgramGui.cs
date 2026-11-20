@@ -19,17 +19,36 @@ namespace VencordInstaller
     public class ProgramGui : Application
     {
         [STAThread]
-        public static void Main()
+        public static void Main(string[] args)
         {
+            UpdaterCore.ConfigureNetworking();
+            StartupOptions startupOpts = UpdaterCore.ParseStartupOptions(args);
+            UpdaterCore.RunStartupCleanup(startupOpts);
+
             ProgramGui app = new ProgramGui();
-            app.Run(new MainWindow());
+            app.Run(new MainWindow(startupOpts));
         }
     }
 
     public class MainWindow : Window
     {
+        private readonly StartupOptions _startupOpts;
+        private readonly object _pendingLock = new object();
+        private ManualResetEvent _syncDone = new ManualResetEvent(false);
+        private UpdateCancellation _syncCancel = new UpdateCancellation();
+        private UpdateSyncResult _syncResult;
+        private volatile bool _syncRunning;
+        private volatile bool _actionBusy;
+        private bool _relaunchCaptured;
+        private ActionType? _pendingActionAfterRelaunch;
+        private string _pendingPathAfterRelaunch;
+
         private List<DiscordInstall> _discords;
         private DiscordInstall _selectedDiscord;
+
+        private Border _updatePill;
+        private Ellipse _updateDot;
+        private TextBlock _updatePillText;
 
         private TextBox _customPathBox;
         private Button _btnBrowse;
@@ -67,8 +86,10 @@ namespace VencordInstaller
         private const string ICON_TRASH = "M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z";
         private const string ICON_SPARKLE = "M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z";
 
-        public MainWindow()
+        public MainWindow(StartupOptions startupOpts)
         {
+            _startupOpts = startupOpts ?? new StartupOptions();
+
             Title = "iMCord Installer";
             Width = 980;
             Height = 640;
@@ -82,6 +103,22 @@ namespace VencordInstaller
             LoadWindowIcon();
             BuildUi();
             RefreshDiscords();
+
+            if (!string.IsNullOrEmpty(_startupOpts.UpdatedFrom))
+            {
+                SetStatus("Installer updated from " + _startupOpts.UpdatedFrom + " to " + BuildInfo.Version + " \u2014 ready!", StatusLevel.Success);
+            }
+
+            Closing += delegate
+            {
+                _syncCancel.Cancel();
+            };
+
+            Loaded += delegate
+            {
+                HandlePendingActionAfterRelaunch();
+                StartUpdateSync(false);
+            };
         }
 
         private void LoadWindowIcon()
@@ -428,6 +465,8 @@ namespace VencordInstaller
 
             // 1. Top Header Row
             Grid headerGrid = new Grid();
+            headerGrid.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(1, GridUnitType.Star) });
+            headerGrid.ColumnDefinitions.Add(new ColumnDefinition() { Width = GridLength.Auto });
 
             StackPanel titleStack = new StackPanel();
             StackPanel mainTitle = new StackPanel() { Orientation = Orientation.Horizontal };
@@ -443,13 +482,61 @@ namespace VencordInstaller
                 Margin = new Thickness(0, 4, 0, 0)
             };
             titleStack.Children.Add(subTitle);
+            Grid.SetColumn(titleStack, 0);
             headerGrid.Children.Add(titleStack);
+
+            // Right Header Pills (Update Status + Safe & Open Source)
+            StackPanel headerPills = new StackPanel()
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Top,
+                Margin = new Thickness(12, 0, 0, 0)
+            };
+
+            _updatePill = new Border()
+            {
+                CornerRadius = new CornerRadius(16),
+                Background = new SolidColorBrush(Color.FromRgb(26, 24, 43)),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(56, 46, 89)),
+                BorderThickness = new Thickness(1),
+                Padding = new Thickness(10, 6, 10, 6),
+                Margin = new Thickness(0, 0, 8, 0),
+                Cursor = Cursors.Hand,
+                ToolTip = "Click to check for latest iMCord updates"
+            };
+            StackPanel updateStack = new StackPanel() { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+            _updateDot = new Ellipse()
+            {
+                Width = 8,
+                Height = 8,
+                Fill = new SolidColorBrush(Color.FromRgb(168, 85, 247)),
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            updateStack.Children.Add(_updateDot);
+            _updatePillText = new TextBlock()
+            {
+                Text = BuildInfo.Version + " \u2022 Checking...",
+                FontSize = 11.5,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = new SolidColorBrush(Color.FromRgb(209, 204, 232)),
+                Margin = new Thickness(7, 0, 0, 0),
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            updateStack.Children.Add(_updatePillText);
+            _updatePill.Child = updateStack;
+            _updatePill.MouseLeftButtonUp += delegate
+            {
+                if (!_syncRunning && !_actionBusy)
+                {
+                    StartUpdateSync(true);
+                }
+            };
+            headerPills.Children.Add(_updatePill);
 
             // Safe & Open Source badge
             Border badge = new Border()
             {
-                HorizontalAlignment = HorizontalAlignment.Right,
-                VerticalAlignment = VerticalAlignment.Top,
                 CornerRadius = new CornerRadius(16),
                 Background = new SolidColorBrush(Color.FromRgb(26, 24, 43)),
                 BorderBrush = new SolidColorBrush(Color.FromRgb(49, 41, 74)),
@@ -468,7 +555,9 @@ namespace VencordInstaller
                 Margin = new Thickness(7, 0, 0, 0)
             });
             badge.Child = badgeStack;
-            headerGrid.Children.Add(badge);
+            headerPills.Children.Add(badge);
+            Grid.SetColumn(headerPills, 1);
+            headerGrid.Children.Add(headerPills);
 
             Grid.SetRow(headerGrid, 0);
             content.Children.Add(headerGrid);
@@ -993,11 +1082,26 @@ namespace VencordInstaller
             Error
         }
 
+        private void RunOnUi(Action act)
+        {
+            if (act == null) return;
+            try
+            {
+                if (Dispatcher == null || Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished)
+                    return;
+                if (Dispatcher.CheckAccess())
+                    act();
+                else
+                    Dispatcher.Invoke(act);
+            }
+            catch { }
+        }
+
         private void SetStatus(string message, StatusLevel level = StatusLevel.Info)
         {
             if (_statusText == null || _statusBanner == null || _statusIcon == null) return;
 
-            Dispatcher.Invoke(new Action(delegate {
+            RunOnUi(delegate {
                 _statusText.Text = message;
                 if (level == StatusLevel.Success)
                 {
@@ -1026,7 +1130,7 @@ namespace VencordInstaller
                     _statusText.Foreground = new SolidColorBrush(Color.FromRgb(141, 137, 164));
                     _statusText.FontWeight = FontWeights.Normal;
                 }
-            }));
+            });
         }
 
         private Grid BuildFeedbackOverlay()
@@ -1163,6 +1267,167 @@ namespace VencordInstaller
             Uninstall
         }
 
+        private void StartUpdateSync(bool forceManual)
+        {
+            if (_syncRunning) return;
+            _syncRunning = true;
+            _syncDone.Reset();
+
+            StartupOptions syncOpts = new StartupOptions
+            {
+                NoSelfUpdate = _startupOpts.NoSelfUpdate,
+                NoUpdate = forceManual ? false : _startupOpts.NoUpdate,
+                ForceUpdate = forceManual || _startupOpts.ForceUpdate,
+                UpdatedFrom = _startupOpts.UpdatedFrom,
+                CleanupOldPid = _startupOpts.CleanupOldPid
+            };
+
+            UpdatePillDisplay("Checking...", Color.FromRgb(168, 85, 247), Color.FromRgb(56, 46, 89));
+
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                UpdateSyncResult res = null;
+                try
+                {
+                    res = UpdaterCore.RunSyncBlocking(
+                        true,
+                        syncOpts,
+                        delegate(UpdateProgress prog)
+                        {
+                            if (prog == null) return;
+                            OnUpdateProgress(prog);
+                        },
+                        _syncCancel,
+                        delegate
+                        {
+                            List<string> extras = new List<string>();
+                            lock (_pendingLock)
+                            {
+                                _relaunchCaptured = true;
+                                if (_pendingActionAfterRelaunch.HasValue)
+                                {
+                                    extras.Add("--pending-action");
+                                    extras.Add(_pendingActionAfterRelaunch.Value == ActionType.Repair ? "repair" : "install");
+                                    if (!string.IsNullOrEmpty(_pendingPathAfterRelaunch))
+                                    {
+                                        extras.Add("--pending-path");
+                                        extras.Add(_pendingPathAfterRelaunch);
+                                    }
+                                }
+                            }
+                            return extras;
+                        }
+                    );
+                }
+                catch (Exception ex)
+                {
+                    res = new UpdateSyncResult
+                    {
+                        Success = false,
+                        Offline = true,
+                        ErrorMessage = ex.Message,
+                        TriggerReason = "exception"
+                    };
+                }
+                finally
+                {
+                    _syncResult = res;
+                    _syncRunning = false;
+                    _syncDone.Set();
+                }
+
+                if (res != null && res.Relaunched)
+                {
+                    RunOnUi(delegate
+                    {
+                        Close();
+                    });
+                    return;
+                }
+
+                if (res != null && res.Offline)
+                {
+                    UpdatePillDisplay(BuildInfo.Version + " \u2022 Offline (Retry)", Color.FromRgb(251, 191, 36), Color.FromRgb(113, 63, 18));
+                }
+                else if (res != null && res.TriggerReason == "dev-skip")
+                {
+                    UpdatePillDisplay("dev \u2022 Check Updates", Color.FromRgb(168, 85, 247), Color.FromRgb(56, 46, 89));
+                }
+                else if (res != null && res.Success)
+                {
+                    string ver = string.IsNullOrEmpty(res.RemoteVersion) ? BuildInfo.Version : res.RemoteVersion;
+                    UpdatePillDisplay(ver + " \u2022 Latest", Color.FromRgb(74, 222, 128), Color.FromRgb(34, 197, 94));
+                    if (res.DownloadedFiles > 0 && !_actionBusy)
+                    {
+                        SetStatus("Synced latest iMCord update (" + ver + ") \u2014 ready to install!", StatusLevel.Success);
+                    }
+                }
+            });
+        }
+
+        private void OnUpdateProgress(UpdateProgress prog)
+        {
+            if (prog.Stage == UpdateStage.SelfUpdating)
+            {
+                string label = string.Format("Updating {0} ({1}%)...", prog.RemoteVersion ?? "", prog.Percent);
+                UpdatePillDisplay(label, Color.FromRgb(192, 132, 252), Color.FromRgb(147, 51, 234));
+                SetStatus(prog.Message, StatusLevel.Info);
+            }
+            else if (prog.Stage == UpdateStage.SelfUpdatedRelaunching)
+            {
+                UpdatePillDisplay("Restarting...", Color.FromRgb(74, 222, 128), Color.FromRgb(34, 197, 94));
+                SetStatus(prog.Message, StatusLevel.Success);
+            }
+            else if (prog.Stage == UpdateStage.SyncingPayload)
+            {
+                string label = string.Format("Syncing {0}/{1} ({2}%)", prog.FilesDone, prog.FilesTotal, prog.Percent);
+                UpdatePillDisplay(label, Color.FromRgb(192, 132, 252), Color.FromRgb(147, 51, 234));
+                if (_actionBusy)
+                {
+                    SetStatus(prog.Message, StatusLevel.Info);
+                }
+            }
+            else if (prog.Stage == UpdateStage.Checking)
+            {
+                UpdatePillDisplay(BuildInfo.Version + " \u2022 Checking...", Color.FromRgb(168, 85, 247), Color.FromRgb(56, 46, 89));
+            }
+        }
+
+        private void UpdatePillDisplay(string text, Color dotColor, Color borderColor)
+        {
+            RunOnUi(delegate
+            {
+                if (_updatePillText != null) _updatePillText.Text = text;
+                if (_updateDot != null) _updateDot.Fill = new SolidColorBrush(dotColor);
+                if (_updatePill != null) _updatePill.BorderBrush = new SolidColorBrush(borderColor);
+            });
+        }
+
+        private void HandlePendingActionAfterRelaunch()
+        {
+            if (_startupOpts == null || string.IsNullOrEmpty(_startupOpts.PendingAction))
+                return;
+
+            if (!string.IsNullOrEmpty(_startupOpts.PendingPath) && Directory.Exists(_startupOpts.PendingPath))
+            {
+                DiscordInstall parsed = InstallerCore.ParseDiscord(_startupOpts.PendingPath);
+                if (parsed != null)
+                {
+                    _selectedDiscord = parsed;
+                    UpdateUi();
+                }
+            }
+
+            if (string.Equals(_startupOpts.PendingAction, "repair", StringComparison.OrdinalIgnoreCase))
+            {
+                ExecuteAction(ActionType.Repair);
+            }
+            else if (string.Equals(_startupOpts.PendingAction, "install", StringComparison.OrdinalIgnoreCase))
+            {
+                ExecuteAction(ActionType.Install);
+            }
+        }
+
         private void ExecuteAction(ActionType action)
         {
             if (_selectedDiscord == null)
@@ -1171,58 +1436,96 @@ namespace VencordInstaller
                 return;
             }
 
+            DiscordInstall targetDiscord = _selectedDiscord;
+            bool waitForSync = (action == ActionType.Install || action == ActionType.Repair) && !_syncDone.WaitOne(0);
+
+            if (waitForSync)
+            {
+                lock (_pendingLock)
+                {
+                    if (_relaunchCaptured)
+                        return;
+                    _pendingActionAfterRelaunch = action;
+                    _pendingPathAfterRelaunch = targetDiscord.BasePath;
+                }
+            }
+
             SetBusy(true);
+            if (waitForSync)
+            {
+                SetStatus("Waiting for latest iMCord update before patching...", StatusLevel.Info);
+            }
 
             Action<string> log = delegate(string msg) {
                 SetStatus(msg, StatusLevel.Info);
             };
 
             ThreadPool.QueueUserWorkItem(delegate {
+                bool relaunching = false;
                 try
                 {
+                    if (action == ActionType.Install || action == ActionType.Repair)
+                    {
+                        _syncDone.WaitOne();
+                        if (_syncResult != null && _syncResult.Relaunched)
+                        {
+                            relaunching = true;
+                            return;
+                        }
+                        lock (_pendingLock)
+                        {
+                            _pendingActionAfterRelaunch = null;
+                            _pendingPathAfterRelaunch = null;
+                        }
+                    }
+
                     switch (action)
                     {
                         case ActionType.Install:
                         case ActionType.Repair:
-                            InstallerCore.Install(_selectedDiscord, log);
+                            InstallerCore.Install(targetDiscord, _syncResult, log);
                             SetStatus("iMCord successfully installed! Custom plugins active. Restart Discord to apply changes.", StatusLevel.Success);
-                            Dispatcher.Invoke(new Action(delegate {
+                            RunOnUi(delegate {
                                 RefreshDiscords();
                                 TriggerFeedbackOverlay("Patched Successfully!", "iMCord & plugins patched. Ready to launch Discord.", true);
-                            }));
+                            });
                             break;
 
                         case ActionType.Uninstall:
-                            InstallerCore.Uninstall(_selectedDiscord, log);
+                            InstallerCore.Uninstall(targetDiscord, log);
                             SetStatus("iMCord successfully uninstalled. Discord restored to stock.", StatusLevel.Success);
-                            Dispatcher.Invoke(new Action(delegate {
+                            RunOnUi(delegate {
                                 RefreshDiscords();
                                 TriggerFeedbackOverlay("Uninstalled Successfully!", "Discord restored to original stock state.", false);
-                            }));
+                            });
                             break;
                     }
                 }
                 catch (Exception ex)
                 {
                     SetStatus("Action failed: " + ex.Message, StatusLevel.Error);
-                    Dispatcher.Invoke(new Action(delegate {
+                    RunOnUi(delegate {
                         TriggerFeedbackOverlay("Action Failed", ex.Message, false);
-                    }));
+                    });
                 }
                 finally
                 {
-                    Dispatcher.Invoke(new Action(delegate {
-                        SetBusy(false);
-                    }));
+                    if (!relaunching)
+                    {
+                        RunOnUi(delegate {
+                            SetBusy(false);
+                        });
+                    }
                 }
             });
         }
 
         private void SetBusy(bool busy)
         {
-            _btnInstall.IsEnabled = !busy;
-            _btnRepair.IsEnabled = !busy;
-            _btnUninstall.IsEnabled = !busy;
+            _actionBusy = busy;
+            _btnInstall.IsEnabled = !busy && _selectedDiscord != null;
+            _btnRepair.IsEnabled = !busy && _selectedDiscord != null;
+            _btnUninstall.IsEnabled = !busy && _selectedDiscord != null && _selectedDiscord.IsPatched;
         }
     }
 }

@@ -8,7 +8,11 @@ namespace VencordInstaller
     {
         public static int Main(string[] args)
         {
-            Console.Title = "iMACord Installer CLI";
+            Console.Title = "iMCord Installer CLI (" + BuildInfo.Version + ")";
+
+            UpdaterCore.ConfigureNetworking();
+            StartupOptions startupOpts = UpdaterCore.ParseStartupOptions(args);
+            UpdaterCore.RunStartupCleanup(startupOpts);
 
             bool flagInstall = false;
             bool flagRepair = false;
@@ -21,9 +25,10 @@ namespace VencordInstaller
             string branchArg = "";
             string locationArg = "";
 
-            for (int i = 0; i < args.Length; i++)
+            List<string> cliArgs = startupOpts.ForwardedArgs;
+            for (int i = 0; i < cliArgs.Count; i++)
             {
-                string a = args[i].TrimStart('-').ToLowerInvariant();
+                string a = cliArgs[i].TrimStart('-').ToLowerInvariant();
                 if (a == "install") flagInstall = true;
                 else if (a == "repair") flagRepair = true;
                 else if (a == "uninstall") flagUninstall = true;
@@ -31,8 +36,8 @@ namespace VencordInstaller
                 else if (a == "uninstall-openasar") flagUninstallOpenAsar = true;
                 else if (a == "help" || a == "h" || a == "?") flagHelp = true;
                 else if (a == "version" || a == "v") flagVersion = true;
-                else if (a == "branch" && i + 1 < args.Length) { branchArg = args[++i].ToLowerInvariant(); }
-                else if (a == "location" && i + 1 < args.Length) { locationArg = args[++i]; }
+                else if (a == "branch" && i + 1 < cliArgs.Count) { branchArg = cliArgs[++i].ToLowerInvariant(); }
+                else if (a == "location" && i + 1 < cliArgs.Count) { locationArg = cliArgs[++i]; }
             }
 
             if (flagHelp)
@@ -43,9 +48,43 @@ namespace VencordInstaller
 
             if (flagVersion)
             {
-                Console.WriteLine("iMCord Installer CLI (Custom Build)");
-                Console.WriteLine("Features: Custom User Plugins & In-App Plugin Manager");
+                Console.WriteLine("iMCord Installer CLI (" + BuildInfo.Version + ")");
+                Console.WriteLine("Features: Auto-Updater, Custom Plugins & In-App Plugin Manager");
                 return 0;
+            }
+
+            if (!string.IsNullOrEmpty(startupOpts.UpdatedFrom))
+            {
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine("[Updater] Updated from " + startupOpts.UpdatedFrom + " to " + BuildInfo.Version + ".");
+                Console.ResetColor();
+            }
+
+            bool hasActionFlag = flagInstall || flagRepair || flagUninstall || flagInstallOpenAsar || flagUninstallOpenAsar;
+            bool needsUpdateSync = !startupOpts.NoUpdate &&
+                                   (startupOpts.UpdateOnly || flagInstall || flagRepair || !hasActionFlag);
+
+            UpdateSyncResult syncResult = null;
+            if (needsUpdateSync)
+            {
+                syncResult = RunCliSync(startupOpts);
+                if (syncResult != null && syncResult.Relaunched)
+                    return syncResult.RelaunchExitCode;
+            }
+
+            if (startupOpts.UpdateOnly)
+            {
+                if (syncResult != null && syncResult.Success)
+                {
+                    Console.ForegroundColor = ConsoleColor.Green;
+                    Console.WriteLine("[SUCCESS] Installer and payload are up to date (" + (syncResult.RemoteVersion ?? BuildInfo.Version) + ").");
+                    Console.ResetColor();
+                    return 0;
+                }
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine("[NOTICE] Could not complete online update: " + (syncResult != null ? syncResult.ErrorMessage : "Offline"));
+                Console.ResetColor();
+                return 1;
             }
 
             List<DiscordInstall> discords = InstallerCore.FindDiscords();
@@ -66,11 +105,9 @@ namespace VencordInstaller
                 }
             }
 
-            bool hasActionFlag = flagInstall || flagRepair || flagUninstall || flagInstallOpenAsar || flagUninstallOpenAsar;
-
             if (!hasActionFlag)
             {
-                return RunInteractive(discords);
+                return RunInteractive(discords, syncResult);
             }
 
             DiscordInstall target = SelectTargetByBranch(discords, branchArg);
@@ -82,7 +119,8 @@ namespace VencordInstaller
                 return 1;
             }
 
-            Action<string> log = delegate(string s) {
+            Action<string> log = delegate(string s)
+            {
                 Console.WriteLine(" -> " + s);
             };
 
@@ -93,7 +131,7 @@ namespace VencordInstaller
                     Console.ForegroundColor = ConsoleColor.Cyan;
                     Console.WriteLine("Installing iMCord to: " + target.BasePath);
                     Console.ResetColor();
-                    InstallerCore.Install(target, log);
+                    InstallerCore.Install(target, syncResult, log);
                     Console.ForegroundColor = ConsoleColor.Green;
                     Console.WriteLine("Successfully installed iMCord!");
                     Console.ResetColor();
@@ -139,13 +177,50 @@ namespace VencordInstaller
             }
         }
 
-        private static int RunInteractive(List<DiscordInstall> discords)
+        private static UpdateSyncResult RunCliSync(StartupOptions startupOpts)
+        {
+            string lastMessage = null;
+            int lastPctBucket = -1;
+
+            UpdateSyncResult res = UpdaterCore.RunSyncBlocking(
+                false,
+                startupOpts,
+                delegate(UpdateProgress prog)
+                {
+                    if (prog == null) return;
+                    int pctBucket = prog.Percent / 20;
+                    if (string.Equals(lastMessage, prog.Message, StringComparison.Ordinal) && pctBucket == lastPctBucket)
+                        return;
+
+                    if (prog.Stage == UpdateStage.SelfUpdating || prog.Stage == UpdateStage.SyncingPayload)
+                    {
+                        if (pctBucket == lastPctBucket && lastMessage != null && lastMessage.StartsWith(prog.Stage == UpdateStage.SelfUpdating ? "Updating" : "Syncing"))
+                            return;
+                    }
+
+                    lastMessage = prog.Message;
+                    lastPctBucket = pctBucket;
+                    Console.WriteLine(" [Updater] " + prog.Message);
+                },
+                new UpdateCancellation()
+            );
+
+            if (res != null && res.Offline && !startupOpts.NoUpdate)
+            {
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine(" [Updater] Offline fallback active (using bundled payload).");
+                Console.ResetColor();
+            }
+
+            return res;
+        }
+
+        private static int RunInteractive(List<DiscordInstall> discords, UpdateSyncResult syncResult)
         {
             Console.ForegroundColor = ConsoleColor.Cyan;
             Console.WriteLine("==================================================");
             Console.WriteLine("              iMCord INSTALLER (CLI)");
-            Console.WriteLine("    Custom Build: iMAMenu");
-            Console.WriteLine("    + Custom Plugin Manager & Filters");
+            Console.WriteLine("    Version: " + BuildInfo.Version + " | Custom Plugins");
             Console.WriteLine("==================================================");
             Console.ResetColor();
             Console.WriteLine();
@@ -234,7 +309,8 @@ namespace VencordInstaller
                 return 0;
             }
 
-            Action<string> log = delegate(string s) {
+            Action<string> log = delegate(string s)
+            {
                 Console.WriteLine(" -> " + s);
             };
 
@@ -249,7 +325,7 @@ namespace VencordInstaller
                         Console.ForegroundColor = ConsoleColor.Cyan;
                         Console.WriteLine("Installing custom iMCord to: " + selectedDiscord.BasePath);
                         Console.ResetColor();
-                        InstallerCore.Install(selectedDiscord, log);
+                        InstallerCore.Install(selectedDiscord, syncResult, log);
                         Console.ForegroundColor = ConsoleColor.Green;
                         Console.WriteLine("\n[SUCCESS] iMCord installed successfully!");
                         Console.WriteLine("Restart Discord to use your custom plugins.");
@@ -328,9 +404,12 @@ namespace VencordInstaller
             Console.WriteLine("Usage: iMCordCLI.exe [options]");
             Console.WriteLine();
             Console.WriteLine("Options:");
-            Console.WriteLine("  -install               Install iMCord");
-            Console.WriteLine("  -repair                Repair / Reinstall iMCord");
+            Console.WriteLine("  -install               Install iMCord (auto-updates first)");
+            Console.WriteLine("  -repair                Repair / Reinstall iMCord (auto-updates first)");
             Console.WriteLine("  -uninstall             Uninstall iMCord");
+            Console.WriteLine("  -update                Check and apply installer/payload updates only");
+            Console.WriteLine("  -no-update             Skip online update check and use bundled payload");
+            Console.WriteLine("  -force-update          Force update check even on local dev builds");
             Console.WriteLine("  -install-openasar      Install OpenAsar");
             Console.WriteLine("  -uninstall-openasar    Uninstall OpenAsar");
             Console.WriteLine("  -branch <branch>       The branch of Discord [auto|stable|ptb|canary|dev]");
