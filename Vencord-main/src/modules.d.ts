@@ -20,7 +20,7 @@ declare module "~plugins" {
     import { PluginTarget } from "@utils/pluginTargets";
     const plugins: Record<string, import("./utils/types").Plugin>;
 
-    export type PluginSource = "imcord" | "vencord";
+    export type PluginSource = "imcord" | "vencord" | "equicord";
     export interface PluginMetadataEntry {
         source: PluginSource;
         addedAt: number;

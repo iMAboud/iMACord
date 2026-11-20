@@ -25,6 +25,14 @@ export default definePlugin({
     description: "Api required for plugins that modify the server list",
     patches: [
         {
+            // Exports Discord's guildless item for the shared server-list component.
+            find: '="DOWNLOAD_APPS"',
+            replacement: {
+                match: /(?<=\i\.\i\(\i,\{)(?=\i:\(\)=>\i.{0,30000}?let (\i)=function\(\i\)\{let\{ref:)/,
+                replace: "GuildlessServerListItemComponent:()=>$1,"
+            }
+        },
+        {
             find: "#{intl::DISCODO_DISABLED}",
             replacement: {
                 match: /(?<=#{intl::DISCODO_DISABLED}.+?return)(\(.{0,150}?tutorialId:"friends-list".+?}\))(?=}function)/,
@@ -33,10 +41,16 @@ export default definePlugin({
         },
         {
             find: ".setGuildsTree(",
-            replacement: {
-                match: /(?<=#{intl::SERVERS}\),gap:"xs",children:)\i\.map\(.{0,50}\.length\)/,
-                replace: "Vencord.Api.ServerList.renderAll(Vencord.Api.ServerList.ServerListRenderPosition.In).concat($&)"
-            }
+            replacement: [
+                {
+                    match: /(?<=#{intl::SERVERS}\),gap:"xs",children:)\i\.map\(.{0,50}\.length\)/,
+                    replace: "Vencord.Api.ServerList.renderAll(Vencord.Api.ServerList.ServerListRenderPosition.In).concat($&)"
+                },
+                {
+                    match: /lastTargetNode.{0,25}\?null:\i,/,
+                    replace: "$&...Vencord.Api.ServerList.renderAll(Vencord.Api.ServerList.ServerListRenderPosition.Below),"
+                }
+            ]
         }
     ]
 });

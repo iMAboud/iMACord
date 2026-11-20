@@ -16,17 +16,23 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-import { ProfileBadge } from "@api/Badges";
-import { ChatBarButtonData } from "@api/ChatButtons";
-import { NavContextMenuPatchCallback } from "@api/ContextMenu";
-import { MemberListDecoratorFactory } from "@api/MemberListDecorators";
-import { MessageAccessoryFactory } from "@api/MessageAccessories";
-import { MessageDecorationFactory } from "@api/MessageDecorations";
-import { MessageClickListener, MessageEditListener, MessageSendListener } from "@api/MessageEvents";
-import { MessagePopoverButtonData } from "@api/MessagePopover";
-import { Command, FluxEvents } from "@vencord/discord-types";
-import { ReactNode } from "react";
-import { LiteralUnion } from "type-fest";
+import type { AudioProcessor } from "@api/AudioPlayer";
+import type { ProfileBadge } from "@api/Badges";
+import type { ChatBarButtonData, ChatBarButtonWrapperData } from "@api/ChatButtons";
+import type { NavContextMenuPatchCallback } from "@api/ContextMenu";
+import type { HeaderBarButtonData } from "@api/HeaderBar";
+import type { MemberListDecoratorFactory } from "@api/MemberListDecorators";
+import type { MessageAccessoryFactory } from "@api/MessageAccessories";
+import type { MessageDecorationFactory } from "@api/MessageDecorations";
+import type { MessageClickListener, MessageEditListener, MessageSendListener } from "@api/MessageEvents";
+import type { MessagePopoverButtonData } from "@api/MessagePopover";
+import type { NicknameIconFactory } from "@api/NicknameIcons";
+import type { ProfileCollectionData } from "@api/ProfileCollections";
+import type { ProfileSectionData } from "@api/ProfileSections";
+import type { UserAreaButtonData } from "@api/UserArea";
+import type { Command, FluxEvents } from "@vencord/discord-types";
+import type { ReactNode } from "react";
+import type { LiteralUnion } from "type-fest";
 
 // exists to export default definePlugin({...})
 export default function definePlugin<P extends PluginDef>(p: P & Record<PropertyKey, any>) {
@@ -206,9 +212,11 @@ export interface PluginDef {
     managedStyle?: string;
 
     userProfileBadge?: ProfileBadge;
+    userProfileBadges?: ProfileBadge[];
 
     messagePopoverButton?: MessagePopoverButtonData;
     chatBarButton?: ChatBarButtonData;
+    chatBarButtonWrapper?: ChatBarButtonWrapperData;
 
     onMessageClick?: MessageClickListener;
     onBeforeMessageSend?: MessageSendListener;
@@ -218,6 +226,13 @@ export interface PluginDef {
     renderMessageDecoration?: MessageDecorationFactory;
 
     renderMemberListDecorator?: MemberListDecoratorFactory;
+    renderNicknameIcon?: NicknameIconFactory;
+    headerBarButton?: HeaderBarButtonData;
+    audioProcessor?: AudioProcessor;
+    userAreaButton?: UserAreaButtonData;
+    renderProfileCollection?: ProfileCollectionData;
+    renderProfileSection?: ProfileSectionData;
+    isModified?: boolean;
 }
 
 export const enum StartAt {

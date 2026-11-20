@@ -69,6 +69,31 @@ async function forceUpdate() {
     return outdated;
 }
 
+export function detectClient(): { name: string; version?: string; spoofed?: string | null; dev?: boolean; shortHash?: string; hash?: string | null; } {
+    if (IS_DISCORD_DESKTOP) {
+        return {
+            name: "Discord Desktop",
+            version: DiscordNative.app.getVersion(),
+        };
+    }
+    if (IS_VESKTOP) {
+        return {
+            name: "Vesktop",
+            version: VesktopNative.app.getVersion(),
+        };
+    }
+    if ("legcord" in window) {
+        return {
+            name: "LegCord",
+            version: (window as any).legcord.version,
+        };
+    }
+    return {
+        // @ts-expect-error
+        name: typeof unsafeWindow !== "undefined" ? "UserScript" : "Web",
+    };
+}
+
 async function generateDebugInfoMessage() {
     const { RELEASE_CHANNEL } = window.GLOBAL_ENV;
 

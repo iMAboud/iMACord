@@ -126,6 +126,12 @@
     border: 1px solid rgb(255 255 255 / 16%);
 }
 
+.vc-addon-source-equicord {
+    background: rgb(226 232 240 / 88%);
+    border: 1px solid rgb(56 189 248 / 55%);
+    box-shadow: 0 0 10px rgb(56 189 248 / 18%);
+}
+
 .vc-addon-source-img {
     width: 16px;
     height: 16px;

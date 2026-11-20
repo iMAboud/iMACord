@@ -223,7 +223,46 @@ export const UserProfileActions = {
 export const InviteActions = findByPropsLazy("resolveInvite");
 export const ChannelActionCreators = findByPropsLazy("openPrivateChannel");
 
+export const useDrag = findByCodeLazy("useDrag::spec.begin was deprecated");
+export const useDrop = findByCodeLazy(".disconnectDropTarget()", ".dropTargetOptions=");
+export const VoiceActions = findByPropsLazy("toggleSelfMute");
+export const GuildActions = findByPropsLazy("setServerMute", "setServerDeaf");
+export const ChannelActions = findByPropsLazy("selectChannel", "selectVoiceChannel");
+export const DraftActions = findByPropsLazy("saveDraft", "changeDraft");
+export const PinActions = findByPropsLazy("pinMessage", "unpinMessage");
+
 export const IconUtils: t.IconUtils = findByPropsLazy("getGuildBannerURL", "getUserAvatarURL");
+
+export const ColorUtils = mapMangledModuleLazy("Invalid hex color format", {
+    rgbToHex: filters.byCode(".toString(16).slice(1)"),
+    hexToRgba: filters.byCode("`rgba(${"),
+    hexToRgb: filters.byCode(".rgb();return"),
+    rgbToHsl: filters.byCode("saturation:", "lightness:"),
+    mixColors: filters.byCode(".substring(1,3),16)"),
+    hexWithAlpha: filters.byCode("Invalid hex color format"),
+    getDominantColor: filters.byCode("hex:", "hsv:"),
+    generatePalette: filters.byCode("360/("),
+});
+
+export const ImageUtils = mapMangledModuleLazy("Input data is not a valid image.", {
+    extractColors: filters.byCode('"number"==typeof'),
+    fileToDataURL: filters.byCode("Result must be a string"),
+    dataURLToFile: filters.byCode("new File(["),
+    fitDimensions: filters.byCode("minWidth:", "minHeight:"),
+    loadImage: filters.byCode('addEventListener("load"'),
+    isAnimatedPNG: filters.byCode("File is not a PNG"),
+    base64Size: filters.byCode("Input data is not a valid image."),
+});
+
+export const ReadStateUtils = mapMangledModuleLazy('type:"ENABLE_AUTOMATIC_ACK",', {
+    ackChannel: filters.byCode(".isForumLikeChannel(")
+});
+
+export const fetchApplicationsRPC = findByCodeLazy('"Invalid Origin"', ".application");
+export const CloudUploader: any = findLazy(m => m.prototype?.trackUploadFinished);
+export const URLUtils: any = findByPropsLazy("URL_REGEX", "makeUrl", "isDiscordUrl");
+export const Humanize: any = findByPropsLazy("filesize", "relativeTime", "ordinal");
+export const EmojiUtils: any = findByPropsLazy("getEmojiColors", "getURL");
 
 export const ExpressionPickerStore: t.ExpressionPickerStore = mapMangledModuleLazy("expression-picker-last-active-view", {
     openExpressionPicker: filters.byCode(/setState\({activeView:(?:(?!null)\i),activeViewType:/),
