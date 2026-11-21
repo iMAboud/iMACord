@@ -72,6 +72,10 @@
       "source": "vencord",
       "addedAt": 1664822605
     },
+    "betteryoutubeembeds.desktop": {
+      "source": "vencord",
+      "addedAt": 1795235040
+    },
     "biggerstreampreview": {
       "source": "vencord",
       "addedAt": 1686936950
@@ -195,10 +199,6 @@
     "fixspotifyembeds.desktop": {
       "source": "vencord",
       "addedAt": 1692629925
-    },
-    "fixyoutubeembeds.desktop": {
-      "source": "vencord",
-      "addedAt": 1705626455
     },
     "forceownercrown": {
       "source": "vencord",
@@ -679,10 +679,6 @@
     "xsoverlay": {
       "source": "vencord",
       "addedAt": 1722376091
-    },
-    "youtubeadblock.desktop": {
-      "source": "vencord",
-      "addedAt": 1722516558
     }
   },
   "equicordFolders": {
