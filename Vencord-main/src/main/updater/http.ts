@@ -18,15 +18,14 @@
 
 import { DIST_DIR, USER_PLUGINS_DIR } from "@main/utils/constants";
 import { fetchBuffer, fetchJson } from "@main/utils/http";
-import { IpcEvents } from "@shared/IpcEvents";
 import { VENCORD_USER_AGENT } from "@shared/vencordUserAgent";
 import { createHash } from "crypto";
-import { ipcMain } from "electron";
 import { existsSync } from "fs";
 import { mkdir, readFile, rename, rm, writeFile } from "fs/promises";
 import { basename, join } from "path";
 
-import { serializeErrors, VENCORD_FILES } from "./common";
+import { Updater } from ".";
+import { VENCORD_FILES } from "./common";
 
 const IMACORD_REPO = "iMAboud/iMACord";
 const RAW_BASE = `https://raw.githubusercontent.com/${IMACORD_REPO}/main`;
@@ -268,7 +267,11 @@ async function applyUpdates(): Promise<boolean> {
     return true;
 }
 
-ipcMain.handle(IpcEvents.GET_REPO, serializeErrors(() => `https://github.com/${IMACORD_REPO}`));
-ipcMain.handle(IpcEvents.GET_UPDATES, serializeErrors(calculateGitChanges));
-ipcMain.handle(IpcEvents.UPDATE, serializeErrors(fetchUpdates));
-ipcMain.handle(IpcEvents.BUILD, serializeErrors(applyUpdates));
+const HttpUpdater: Updater = {
+    getRepo: async () => `https://github.com/${IMACORD_REPO}`,
+    listUpdates: calculateGitChanges,
+    fetchUpdate: fetchUpdates,
+    applyUpdate: applyUpdates
+};
+
+export default HttpUpdater;
