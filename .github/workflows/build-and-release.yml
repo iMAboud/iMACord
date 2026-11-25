@@ -6,6 +6,9 @@ on:
       - main
     tags:
       - 'v*'
+  pull_request:
+    branches:
+      - main
   schedule:
     - cron: '0 */6 * * *'
   workflow_dispatch:
@@ -14,8 +17,8 @@ permissions:
   contents: write
 
 concurrency:
-  group: imcord-release
-  cancel-in-progress: false
+  group: imcord-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || 'release' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build-and-release:
@@ -32,7 +35,7 @@ jobs:
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         run: node scripts/sync_upstream.mjs --fetch
 
-      - name: Determine Whether Release Is Needed
+      - name: Determine Whether Build Is Needed
         id: gate
         shell: bash
         run: |
@@ -47,12 +50,12 @@ jobs:
           fi
 
           LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || true)
-          if [[ -z "$LAST_TAG" ]] || [[ -n "$(git diff --name-only "$LAST_TAG" HEAD -- Vencord-main userplugins installer_src scripts)" ]]; then
+          if [[ -z "$LAST_TAG" ]] || [[ -n "$(git diff --name-only "$LAST_TAG" HEAD -- Vencord-main userplugins installer_src scripts ':(exclude)userplugins/manifest.json')" ]]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          echo "No upstream Vencord or local source changes since $LAST_TAG; skipping release."
+          echo "No upstream Vencord/Equicord or local source changes since $LAST_TAG; skipping release."
           echo "run=false" >> "$GITHUB_OUTPUT"
 
       - name: Setup Node.js
@@ -72,10 +75,16 @@ jobs:
         working-directory: Vencord-main
         run: pnpm --config.manage-package-manager-versions=false install --no-frozen-lockfile --ignore-scripts
 
-      - name: Build Standalone Vencord
+      - name: Build Standalone Vencord & Web Targets
         if: steps.gate.outputs.run == 'true'
         working-directory: Vencord-main
-        run: node scripts/build/build.mjs --standalone
+        run: |
+          node scripts/build/build.mjs --standalone
+          node scripts/build/buildWeb.mjs
+
+      - name: Verify Core Types, IPC Contracts & Runtime E2E
+        if: steps.gate.outputs.run == 'true'
+        run: node scripts/verify_build.mjs
 
       - name: Set Release Tag
         if: steps.gate.outputs.run == 'true'
@@ -100,8 +109,12 @@ jobs:
         if: steps.gate.outputs.run == 'true'
         run: node scripts/generate_manifest.mjs
 
+      - name: Verify Installer & Release Manifest in Sandbox
+        if: steps.gate.outputs.run == 'true'
+        run: node scripts/verify_build.mjs --only-release
+
       - name: Commit Synced Changes & Manifest
-        if: steps.gate.outputs.run == 'true' && github.ref_type != 'tag'
+        if: steps.gate.outputs.run == 'true' && github.event_name != 'pull_request' && github.ref_type != 'tag'
         shell: bash
         run: |
           git config --local user.email "action@github.com"
@@ -114,15 +127,17 @@ jobs:
               MSG="chore: sync upstream Vencord (${{ steps.sync.outputs.upstream_sha }}) & Equicord (${{ steps.sync.outputs.equicord_sha }}) & update release manifest [skip ci]"
             fi
             git commit -m "$MSG"
-            git pull --rebase origin main || true
+            git pull --rebase origin main
             git push
           fi
+          echo "RELEASE_COMMIT=$(git rev-parse HEAD)" >> $GITHUB_ENV
 
       - name: Publish GitHub Release
-        if: steps.gate.outputs.run == 'true'
+        if: steps.gate.outputs.run == 'true' && github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.TAG_NAME }}
+          target_commitish: ${{ env.RELEASE_COMMIT || github.sha }}
           name: ${{ env.RELEASE_NAME }}
           draft: false
           prerelease: false
